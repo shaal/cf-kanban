@@ -1,20 +1,35 @@
 /**
- * TASK-042 (stub): Agent Command Wrappers
+ * TASK-042: Agent Command Wrappers
  *
  * Provides high-level interface to Claude Flow agent operations.
- * This is a stub implementation for TASK-053 dependency.
- * Full implementation pending TASK-042.
+ * Wraps CLI commands for spawning, managing, and monitoring agents.
  */
 
-import { claudeFlowCLI, type CommandOptions } from './cli';
-import type { AgentType } from '../analysis/ticket-analyzer';
+import { claudeFlowCLI, CLIError, type CommandOptions } from './cli';
+
+/**
+ * Valid agent types supported by Claude Flow
+ */
+export type AgentType =
+	| 'coder'
+	| 'tester'
+	| 'reviewer'
+	| 'researcher'
+	| 'planner'
+	| 'architect'
+	| 'coordinator'
+	| 'security-architect'
+	| 'security-auditor'
+	| 'api-docs'
+	| 'performance-engineer'
+	| 'memory-specialist';
 
 /**
  * Configuration for spawning an agent
  */
 export interface AgentConfig {
 	/** Type of agent to spawn */
-	type: AgentType;
+	type: AgentType | string;
 	/** Unique name for this agent */
 	name: string;
 	/** Optional prompt/instructions for the agent */
@@ -23,10 +38,12 @@ export interface AgentConfig {
 	model?: string;
 	/** Optional working directory */
 	cwd?: string;
+	/** Optional environment variables */
+	env?: Record<string, string>;
 }
 
 /**
- * Status of an agent
+ * Represents a running agent
  */
 export interface Agent {
 	/** Unique agent identifier */
@@ -36,12 +53,21 @@ export interface Agent {
 	/** Agent name */
 	name: string;
 	/** Current status */
-	status: 'idle' | 'working' | 'blocked' | 'stopped' | 'error';
+	status: AgentStatus;
 	/** When the agent was created */
 	createdAt: string;
 	/** Current task (if any) */
 	currentTask?: string;
+	/** Associated project ID (if any) */
+	projectId?: string;
+	/** Associated ticket ID (if any) */
+	ticketId?: string;
 }
+
+/**
+ * Possible agent statuses
+ */
+export type AgentStatus = 'idle' | 'working' | 'blocked' | 'stopped' | 'error' | 'initializing';
 
 /**
  * Agent metrics for monitoring
@@ -53,8 +79,50 @@ export interface AgentMetrics {
 	tasksFailed: number;
 	/** Average task duration in ms */
 	avgTaskDuration: number;
-	/** Current memory usage */
+	/** Current memory usage in bytes */
 	memoryUsage?: number;
+	/** Uptime in seconds */
+	uptime?: number;
+	/** Last activity timestamp */
+	lastActivity?: string;
+}
+
+/**
+ * Health status for an agent
+ */
+export interface AgentHealth {
+	/** Whether the agent is healthy */
+	healthy: boolean;
+	/** Health score from 0 to 1 */
+	score: number;
+	/** Any issues detected */
+	issues: string[];
+	/** Last checked timestamp */
+	checkedAt: string;
+}
+
+/**
+ * Options for listing agents
+ */
+export interface ListAgentsOptions extends CommandOptions {
+	/** Filter by status */
+	status?: AgentStatus;
+	/** Filter by type */
+	type?: AgentType | string;
+	/** Include terminated agents */
+	includeTerminated?: boolean;
+}
+
+/**
+ * Options for stopping an agent
+ */
+export interface StopAgentOptions extends CommandOptions {
+	/** Allow graceful shutdown */
+	graceful?: boolean;
+	/** Force immediate termination */
+	force?: boolean;
+	/** Timeout for graceful shutdown in ms */
+	timeout?: number;
 }
 
 /**
@@ -67,46 +135,60 @@ export class AgentService {
 	 * @param config - Agent configuration
 	 * @param options - Command options
 	 * @returns The spawned agent
+	 * @throws CLIError if spawn fails
 	 */
 	async spawn(config: AgentConfig, options: CommandOptions = {}): Promise<Agent> {
-		const args = ['-t', config.type, '--name', config.name];
+		const args = this.buildSpawnArgs(config);
 
-		if (config.prompt) {
-			args.push('--prompt', config.prompt);
-		}
-
-		if (config.model) {
-			args.push('--model', config.model);
-		}
-
-		if (config.cwd) {
-			args.push('--cwd', config.cwd);
-		}
+		const commandOptions: CommandOptions = {
+			...options,
+			cwd: config.cwd ?? options.cwd,
+			env: { ...options.env, ...config.env }
+		};
 
 		try {
-			return await claudeFlowCLI.executeJson<Agent>('agent', ['spawn', ...args], options);
-		} catch {
-			// Return placeholder agent for development/testing
+			const agent = await claudeFlowCLI.executeJson<Agent>(
+				'agent',
+				['spawn', ...args],
+				commandOptions
+			);
+
 			return {
-				id: `agent-${config.type}-${Date.now()}`,
-				type: config.type,
-				name: config.name,
-				status: 'idle',
-				createdAt: new Date().toISOString()
+				...agent,
+				status: agent.status || 'initializing'
 			};
+		} catch (error) {
+			// If CLI not available, return mock agent for development
+			if (error instanceof CLIError && error.stderr.includes('not found')) {
+				return this.createMockAgent(config);
+			}
+			throw error;
 		}
 	}
 
 	/**
 	 * List all agents
 	 *
-	 * @param options - Command options
+	 * @param options - List options
 	 * @returns List of agents
 	 */
-	async list(options: CommandOptions = {}): Promise<Agent[]> {
+	async list(options: ListAgentsOptions = {}): Promise<Agent[]> {
+		const args: string[] = [];
+
+		if (options.status) {
+			args.push('--status', options.status);
+		}
+		if (options.type) {
+			args.push('--type', options.type);
+		}
+		if (options.includeTerminated) {
+			args.push('--include-terminated');
+		}
+
 		try {
-			return await claudeFlowCLI.executeJson<Agent[]>('agent', ['list'], options);
+			return await claudeFlowCLI.executeJson<Agent[]>('agent', ['list', ...args], options);
 		} catch {
+			// Return empty list if CLI not available
 			return [];
 		}
 	}
@@ -117,18 +199,21 @@ export class AgentService {
 	 * @param agentId - Agent ID
 	 * @param options - Command options
 	 * @returns Agent status
+	 * @throws CLIError if agent not found
 	 */
 	async getStatus(agentId: string, options: CommandOptions = {}): Promise<Agent> {
 		try {
 			return await claudeFlowCLI.executeJson<Agent>('agent', ['status', agentId], options);
-		} catch {
-			return {
-				id: agentId,
-				type: 'unknown',
-				name: 'unknown',
-				status: 'error',
-				createdAt: new Date().toISOString()
-			};
+		} catch (error) {
+			if (error instanceof CLIError) {
+				// Re-throw with more context
+				throw new CLIError(
+					`Failed to get status for agent ${agentId}: ${error.message}`,
+					error.exitCode,
+					error.stderr
+				);
+			}
+			throw error;
 		}
 	}
 
@@ -136,20 +221,28 @@ export class AgentService {
 	 * Stop an agent
 	 *
 	 * @param agentId - Agent ID
-	 * @param graceful - Whether to allow graceful shutdown
-	 * @param options - Command options
+	 * @param options - Stop options
+	 * @returns Whether stop was successful
 	 */
-	async stop(
-		agentId: string,
-		graceful = true,
-		options: CommandOptions = {}
-	): Promise<void> {
+	async stop(agentId: string, options: StopAgentOptions = {}): Promise<boolean> {
 		const args = ['stop', agentId];
-		if (graceful) {
+
+		if (options.graceful !== false) {
 			args.push('--graceful');
 		}
+		if (options.force) {
+			args.push('--force');
+		}
+		if (options.timeout) {
+			args.push('--timeout', options.timeout.toString());
+		}
 
-		await claudeFlowCLI.execute('agent', args, options);
+		try {
+			const result = await claudeFlowCLI.execute('agent', args, options);
+			return result.exitCode === 0;
+		} catch {
+			return false;
+		}
 	}
 
 	/**
@@ -167,10 +260,35 @@ export class AgentService {
 				options
 			);
 		} catch {
+			// Return default metrics if unavailable
 			return {
 				tasksCompleted: 0,
 				tasksFailed: 0,
 				avgTaskDuration: 0
+			};
+		}
+	}
+
+	/**
+	 * Check health of an agent
+	 *
+	 * @param agentId - Agent ID
+	 * @param options - Command options
+	 * @returns Agent health status
+	 */
+	async checkHealth(agentId: string, options: CommandOptions = {}): Promise<AgentHealth> {
+		try {
+			return await claudeFlowCLI.executeJson<AgentHealth>(
+				'agent',
+				['health', agentId],
+				options
+			);
+		} catch {
+			return {
+				healthy: false,
+				score: 0,
+				issues: ['Unable to check agent health'],
+				checkedAt: new Date().toISOString()
 			};
 		}
 	}
@@ -181,32 +299,104 @@ export class AgentService {
 	 * @param agentId - Agent ID
 	 * @param message - Message to send
 	 * @param options - Command options
+	 * @returns Whether message was sent
 	 */
 	async sendMessage(
 		agentId: string,
 		message: string,
 		options: CommandOptions = {}
-	): Promise<void> {
-		await claudeFlowCLI.execute(
-			'agent',
-			['message', agentId, '--content', message],
-			options
-		);
+	): Promise<boolean> {
+		try {
+			const result = await claudeFlowCLI.execute(
+				'agent',
+				['message', agentId, '--content', message],
+				options
+			);
+			return result.exitCode === 0;
+		} catch {
+			return false;
+		}
 	}
 
 	/**
-	 * Check if an agent is active
+	 * Check if an agent is active (idle or working)
 	 *
 	 * @param agentId - Agent ID
 	 * @returns Whether agent is active
 	 */
 	async isActive(agentId: string): Promise<boolean> {
 		try {
-			const status = await this.getStatus(agentId);
-			return status.status === 'idle' || status.status === 'working';
+			const agent = await this.getStatus(agentId);
+			return agent.status === 'idle' || agent.status === 'working';
 		} catch {
 			return false;
 		}
+	}
+
+	/**
+	 * Wait for an agent to reach a specific status
+	 *
+	 * @param agentId - Agent ID
+	 * @param targetStatus - Status to wait for
+	 * @param timeout - Maximum wait time in ms
+	 * @param pollInterval - How often to check in ms
+	 * @returns The agent when target status is reached
+	 * @throws Error if timeout is reached
+	 */
+	async waitForStatus(
+		agentId: string,
+		targetStatus: AgentStatus | AgentStatus[],
+		timeout = 60000,
+		pollInterval = 1000
+	): Promise<Agent> {
+		const statusArray = Array.isArray(targetStatus) ? targetStatus : [targetStatus];
+		const startTime = Date.now();
+
+		while (Date.now() - startTime < timeout) {
+			const agent = await this.getStatus(agentId);
+			if (statusArray.includes(agent.status)) {
+				return agent;
+			}
+
+			// If agent is in error state, throw immediately
+			if (agent.status === 'error' && !statusArray.includes('error')) {
+				throw new Error(`Agent ${agentId} entered error state`);
+			}
+
+			await new Promise(resolve => setTimeout(resolve, pollInterval));
+		}
+
+		throw new Error(`Timeout waiting for agent ${agentId} to reach status ${statusArray.join(' or ')}`);
+	}
+
+	/**
+	 * Build spawn command arguments from config
+	 */
+	private buildSpawnArgs(config: AgentConfig): string[] {
+		const args = ['-t', config.type, '--name', config.name];
+
+		if (config.prompt) {
+			args.push('--prompt', config.prompt);
+		}
+
+		if (config.model) {
+			args.push('--model', config.model);
+		}
+
+		return args;
+	}
+
+	/**
+	 * Create a mock agent for development/testing when CLI unavailable
+	 */
+	private createMockAgent(config: AgentConfig): Agent {
+		return {
+			id: `mock-${config.type}-${Date.now()}`,
+			type: config.type,
+			name: config.name,
+			status: 'idle',
+			createdAt: new Date().toISOString()
+		};
 	}
 }
 

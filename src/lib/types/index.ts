@@ -92,3 +92,35 @@ export interface TransitionTicketResponse {
     to: TicketStatus;
   };
 }
+
+/**
+ * TASK-055: Question types for agent-user feedback loop
+ */
+export type QuestionType = 'TEXT' | 'CHOICE' | 'MULTISELECT' | 'CONFIRM' | 'CODE';
+
+/**
+ * TASK-055: Ticket question for feedback loop
+ */
+export interface TicketQuestion {
+  id: string;
+  ticketId: string;
+  agentId: string;
+  question: string;
+  type: QuestionType;
+  options: string[];
+  required: boolean;
+  context?: string | null;
+  codeLanguage?: string | null;
+  defaultValue?: string | null;
+  answer?: string | null;
+  answered: boolean;
+  createdAt: Date;
+  answeredAt?: Date | null;
+}
+
+/**
+ * TASK-054: Ticket with questions for feedback display
+ */
+export interface TicketWithQuestions extends Ticket {
+  questions: TicketQuestion[];
+}

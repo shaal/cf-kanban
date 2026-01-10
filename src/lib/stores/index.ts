@@ -87,3 +87,22 @@ export {
   type AddOperationInput,
   type RollbackResult
 } from './optimistic';
+
+// Progress tracking store for real-time execution progress
+export {
+  getTicketProgress,
+  activeProgress,
+  selectedProgressTicketId,
+  initializeProgress,
+  updateStage,
+  addProgressLog,
+  completeProgress,
+  failProgress,
+  removeProgress,
+  hasActiveProgress,
+  setupProgressListeners,
+  type ProgressStage,
+  type ProgressLogEntry,
+  type TicketProgressState,
+  type StageStatus
+} from './progress';
