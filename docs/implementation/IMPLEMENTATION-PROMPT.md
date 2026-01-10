@@ -70,11 +70,11 @@ npx @claude-flow/cli@latest memory retrieve --key "prd-swim-lane-architecture" -
 ## Technology Stack
 
 ### Frontend
-- **Framework**: Next.js 14+ (App Router)
-- **State**: Zustand + React Query
+- **Framework**: SvelteKit 2+ (with Svelte 5)
+- **State**: Svelte Stores + TanStack Query/Svelte
 - **Real-time**: Socket.IO Client
-- **UI**: Radix UI + Tailwind CSS
-- **Drag & Drop**: dnd-kit
+- **UI**: Bits UI + Tailwind CSS (or Skeleton UI)
+- **Drag & Drop**: svelte-dnd-action
 - **Visualizations**: D3.js (later phases)
 
 ### Backend
@@ -154,23 +154,23 @@ REFACTOR → Clean up while tests pass
 ### File Organization
 ```
 /src
-├── /app                 # Next.js App Router pages
-├── /components          # React components
-│   ├── /kanban          # Kanban-specific components
-│   └── /ui              # Generic UI components
-├── /lib                 # Utilities and helpers
-│   ├── /db              # Prisma client
+├── /routes              # SvelteKit routes
+│   ├── /projects        # Project pages
+│   └── /api             # API endpoints
+├── /lib                 # Shared code ($lib alias)
+│   ├── /components      # Svelte components
+│   │   ├── /kanban      # Kanban-specific
+│   │   └── /ui          # Generic UI
+│   ├── /stores          # Svelte stores
+│   ├── /server          # Server-only code
+│   │   └── /db          # Prisma client
 │   └── /state-machine   # Ticket state machine
-├── /hooks               # Custom React hooks
-└── /types               # TypeScript types
+└── app.d.ts             # App types
 
 /tests
 ├── /unit                # Unit tests
 ├── /integration         # Integration tests
-└── /e2e                 # End-to-end tests
-
-/prisma
-└── schema.prisma        # Database schema
+└── /e2e                 # Playwright tests
 ```
 
 ### Store Learnings
@@ -214,6 +214,12 @@ npm test
 
 # Start dev server
 npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
 ```
 
 ---

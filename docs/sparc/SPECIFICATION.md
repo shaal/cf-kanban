@@ -966,6 +966,20 @@ interface PatternVersion {
 ### 9.1 Project APIs
 
 #### Create Project
+
+**SvelteKit API Route: `src/routes/api/v1/projects/+server.ts`**
+```typescript
+import { json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = async ({ request }) => {
+  const data = await request.json();
+  // Create project...
+  return json({ id: 'uuid-123', ...data }, { status: 201 });
+};
+```
+
+**Request:**
 ```http
 POST /api/v1/projects
 Content-Type: application/json
@@ -1214,13 +1228,18 @@ Response: 200 OK
 ### 9.5 WebSocket Events
 
 ```typescript
-// Client subscribes to events
-ws.send(JSON.stringify({
-  type: 'subscribe',
-  channels: ['project:uuid-123', 'ticket:ticket-uuid']
-}));
+// In a Svelte component or store
+import { writable } from 'svelte/store';
+import { io } from 'socket.io-client';
 
-// Server pushes events
+const socket = io();
+export const ticketUpdates = writable<WebSocketEvent[]>([]);
+
+socket.on('ticket.progress', (event) => {
+  ticketUpdates.update(events => [...events, event]);
+});
+
+// WebSocket event types
 interface WebSocketEvent {
   type:
     | 'ticket.progress'
@@ -1244,7 +1263,7 @@ interface WebSocketEvent {
 
 ### 10.1 CLI Command Mapping
 
-The Kanban UI actions map to Claude Flow CLI commands:
+The SvelteKit Kanban UI actions map to Claude Flow CLI commands:
 
 | UI Action | CLI Command |
 |-----------|-------------|
@@ -1259,9 +1278,22 @@ The Kanban UI actions map to Claude Flow CLI commands:
 
 ### 10.2 Hook Integration
 
-The system leverages Claude Flow hooks for lifecycle events:
+The system leverages Claude Flow hooks for lifecycle events. These can be called from SvelteKit server routes (`+server.ts`) or server load functions (`+page.server.ts`):
 
 ```typescript
+// src/lib/server/hooks.ts - Server-side hook utilities
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
+export async function executeHook(hook: string, options: Record<string, unknown>) {
+  const args = Object.entries(options)
+    .map(([key, value]) => `--${key} "${value}"`)
+    .join(' ');
+  return execAsync(`npx @claude-flow/cli@latest hooks ${hook} ${args}`);
+}
+
 // Pre-task hook when ticket moves to In Progress
 await executeHook('pre-task', {
   description: ticket.title,
@@ -1290,67 +1322,95 @@ const routing = await executeHook('route', {
 
 ### 10.3 Memory Integration
 
-Pattern storage and retrieval uses Claude Flow memory system:
+Pattern storage and retrieval uses Claude Flow memory system. In SvelteKit, these operations run server-side:
 
 ```typescript
+// src/lib/server/memory.ts - Server-side memory utilities
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
 // Store learned pattern
-await memory.store({
-  namespace: 'patterns',
-  key: `${project.id}-${pattern.name}`,
-  value: pattern.value,
-  tags: pattern.tags
-});
+export async function storePattern(project: Project, pattern: Pattern) {
+  await execAsync(`npx @claude-flow/cli@latest memory store \
+    --namespace patterns \
+    --key "${project.id}-${pattern.name}" \
+    --value "${pattern.value}" \
+    --tags "${pattern.tags.join(',')}"`);
+}
 
 // Search patterns (HNSW-indexed)
-const results = await memory.search({
-  query: searchTerms,
-  namespace: 'patterns',
-  limit: 10,
-  threshold: 0.7
-});
+export async function searchPatterns(query: string, limit = 10) {
+  const { stdout } = await execAsync(`npx @claude-flow/cli@latest memory search \
+    --query "${query}" \
+    --namespace patterns \
+    --limit ${limit}`);
+  return JSON.parse(stdout);
+}
 
 // Cross-project retrieval
-const crossProjectPatterns = await memory.search({
-  query: task.description,
-  namespace: 'global-patterns',
-  projectFilter: relatedProjects
-});
+export async function searchCrossProject(task: string, namespace = 'global-patterns') {
+  const { stdout } = await execAsync(`npx @claude-flow/cli@latest memory search \
+    --query "${task}" \
+    --namespace ${namespace}`);
+  return JSON.parse(stdout);
+}
 ```
 
 ### 10.4 Swarm Orchestration
 
-```typescript
-// Initialize swarm for project
-async function initializeSwarm(project: Project): Promise<SwarmInstance> {
-  const swarm = await claudeFlow.swarm.init({
-    topology: project.swarmConfig.topology,
-    maxAgents: project.swarmConfig.maxAgents,
-    consensus: project.swarmConfig.consensusStrategy
-  });
+Swarm orchestration in SvelteKit is handled through server-side utilities that wrap the Claude Flow CLI:
 
-  return swarm;
+```typescript
+// src/lib/server/swarm.ts - Server-side swarm utilities
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
+// Initialize swarm for project
+export async function initializeSwarm(project: Project): Promise<SwarmInstance> {
+  const { stdout } = await execAsync(`npx @claude-flow/cli@latest swarm init \
+    --topology ${project.swarmConfig.topology} \
+    --max-agents ${project.swarmConfig.maxAgents}`);
+  return JSON.parse(stdout);
 }
 
 // Spawn agents for ticket execution
-async function executeTicket(ticket: Ticket): Promise<void> {
-  const routing = await claudeFlow.hooks.route({
-    task: ticket.description,
-    context: ticket.customAttributes
-  });
+export async function executeTicket(ticket: Ticket): Promise<void> {
+  // Get routing recommendation
+  const { stdout: routingOutput } = await execAsync(
+    `npx @claude-flow/cli@latest hooks route --task "${ticket.description}"`
+  );
+  const routing = JSON.parse(routingOutput);
 
-  const agents = await Promise.all(
-    routing.recommendedAgents.map(agentType =>
-      claudeFlow.agent.spawn({
-        type: agentType,
-        ticketId: ticket.id,
-        swarmId: ticket.project.swarmId
-      })
+  // Spawn recommended agents in parallel
+  await Promise.all(
+    routing.recommendedAgents.map((agentType: string) =>
+      execAsync(`npx @claude-flow/cli@latest agent spawn \
+        -t ${agentType} \
+        --name "${ticket.id}-${agentType}"`)
     )
   );
 
   // Agents execute autonomously
-  // Progress updates via hooks
+  // Progress updates via WebSocket events to Svelte stores
 }
+```
+
+**SvelteKit API Route for Ticket Execution:**
+```typescript
+// src/routes/api/v1/tickets/[ticketId]/execute/+server.ts
+import { json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { executeTicket } from '$lib/server/swarm';
+
+export const POST: RequestHandler = async ({ params }) => {
+  const ticket = await getTicket(params.ticketId);
+  await executeTicket(ticket);
+  return json({ status: 'executing', ticketId: params.ticketId });
+};
 ```
 
 ### 10.5 Background Workers

@@ -238,7 +238,7 @@ Real-time visualization of active swarms:
 │                                                                     │
 │   ┌─────────────────┐        ┌─────────────────┐                   │
 │   │  Web Frontend   │        │  Web Frontend   │  (Multiple Users) │
-│   │  (Next.js 14)   │        │  (Next.js 14)   │                   │
+│   │  (SvelteKit 2)  │        │  (SvelteKit 2)  │                   │
 │   └────────┬────────┘        └────────┬────────┘                   │
 │            │                          │                             │
 │            └────────────┬─────────────┘                             │
@@ -288,13 +288,19 @@ Multiple Claude Code instances coordinate through Redis:
 
 ### Technology Stack
 
+> **Why SvelteKit?** SvelteKit is the optimal choice for CF-Kanban because:
+> 1. **Animation-first architecture** - Svelte's built-in transitions and motion primitives are ideal for our 2045 UX vision with fluid agent visualizations
+> 2. **Smaller bundles** - No virtual DOM overhead means faster load times (<2s TTI target)
+> 3. **Superior D3 integration** - Svelte's reactive declarations work seamlessly with D3's data-driven approach, no useEffect gymnastics needed
+> 4. **Less boilerplate** - Stores are simpler than Zustand, reactivity is built-in
+
 **Frontend**
-- Next.js 14+ (App Router, SSR)
-- Zustand + React Query (state)
+- SvelteKit 2+ (SSR, file-based routing)
+- Svelte Stores + TanStack Query/Svelte (state)
 - Socket.IO Client (real-time)
-- D3.js + Visx (visualizations)
-- dnd-kit (drag & drop)
-- Radix UI + Tailwind (components)
+- D3.js (visualizations - native Svelte reactivity)
+- svelte-dnd-action (drag & drop)
+- Bits UI + Tailwind CSS (components)
 
 **Backend**
 - Node.js + Express/Fastify
@@ -304,7 +310,7 @@ Multiple Claude Code instances coordinate through Redis:
 - Clerk/Auth.js (authentication)
 
 **Infrastructure**
-- Vercel (frontend) + Railway (backend)
+- Vercel/Cloudflare Pages (frontend) + Railway (backend)
 - Docker Compose (dev) / K8s (prod)
 - Grafana + Prometheus (monitoring)
 - Pino + Loki (logging)
@@ -353,8 +359,8 @@ Multiple Claude Code instances coordinate through Redis:
 ## Part 6: Implementation Roadmap
 
 ### Phase 1: Foundation (Weeks 1-4)
-- [ ] Next.js project setup with TypeScript
-- [ ] Basic Kanban board UI (drag-drop columns)
+- [ ] SvelteKit project setup with TypeScript
+- [ ] Basic Kanban board UI (drag-drop columns with svelte-dnd-action)
 - [ ] REST API for CRUD operations
 - [ ] PostgreSQL with Prisma
 - [ ] Basic authentication

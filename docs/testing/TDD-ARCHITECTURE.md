@@ -241,7 +241,7 @@ describe('TicketStateMachine', () => {
     });
 
     it('should emit state change event on transition', () => {
-      const eventSpy = jest.fn();
+      const eventSpy = vi.fn();
       const ticket = createTicket({ status: 'TODO' });
       ticket.on('stateChange', eventSpy);
       ticket.transition('IN_PROGRESS', { assignedAgent: 'agent-1' });
@@ -288,7 +288,7 @@ describe('AgentRouter', () => {
     });
 
     it('should route UI tasks to frontend-dev agent', () => {
-      const result = routeTask('Build React component for dashboard');
+      const result = routeTask('Build Svelte component for dashboard');
       expect(result.agent).toBe('frontend-dev');
     });
   });
@@ -626,8 +626,8 @@ describe('ProjectIsolation', () => {
       const project1 = await createProject('project-1');
       const project2 = await createProject('project-2');
 
-      const listener1 = jest.fn();
-      const listener2 = jest.fn();
+      const listener1 = vi.fn();
+      const listener2 = vi.fn();
 
       project1.on('ticketCreated', listener1);
       project2.on('ticketCreated', listener2);
@@ -2672,7 +2672,7 @@ export class SimulatedNode {
 ```typescript
 // /tests/helpers/test-setup.ts
 
-import { jest } from '@jest/globals';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 // Global test setup
 beforeAll(async () => {
@@ -2683,7 +2683,7 @@ beforeAll(async () => {
   await setupMockServers();
 
   // Configure test timeouts
-  jest.setTimeout(30000);
+  vi.setConfig({ testTimeout: 30000 });
 });
 
 afterAll(async () => {
@@ -2694,7 +2694,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   // Reset mocks
-  jest.clearAllMocks();
+  vi.clearAllMocks();
 
   // Clear test memory
   await clearTestMemory();
@@ -2906,15 +2906,15 @@ export default {
 // package.json scripts
 {
   "scripts": {
-    "test": "jest",
-    "test:unit": "jest --selectProjects unit",
-    "test:integration": "jest --selectProjects integration",
-    "test:e2e": "jest --selectProjects e2e",
-    "test:ai": "jest --selectProjects ai",
-    "test:performance": "jest --selectProjects performance",
-    "test:coverage": "jest --coverage",
-    "test:watch": "jest --watch",
-    "test:ci": "jest --ci --coverage --maxWorkers=2"
+    "test": "vitest",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "playwright test",
+    "test:ai": "vitest run --project ai",
+    "test:performance": "vitest run --project performance",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest --watch",
+    "test:ci": "vitest run --coverage --pool=forks --poolOptions.forks.maxForks=2"
   }
 }
 ```
