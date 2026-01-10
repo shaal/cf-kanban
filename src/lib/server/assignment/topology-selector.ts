@@ -386,3 +386,10 @@ export class TopologySelector {
 
 // Singleton instance
 export const topologySelector = new TopologySelector();
+
+/**
+ * Convenience function to select topology without instantiating class
+ */
+export function selectTopology(factors: TopologyFactors): TopologyDecision {
+	return topologySelector.selectTopology(factors);
+}

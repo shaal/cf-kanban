@@ -19,15 +19,19 @@ vi.mock('$lib/server/claude-flow/cli', () => ({
 
 // Import after mocks
 import {
-  assignAgents,
-  storeSuccessfulAssignment,
+  AgentRouter,
+  agentRouter,
   type AgentAssignment,
-  type AgentConfig
+  type AgentConfig,
+  AGENT_CAPABILITIES
 } from '$lib/server/assignment/agent-router';
 import type { AnalysisResult } from '$lib/server/analysis/ticket-analyzer';
 
 describe('Agent Router', () => {
+  let router: AgentRouter;
+
   beforeEach(() => {
+    router = new AgentRouter();
     vi.clearAllMocks();
     mockExecute.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, timedOut: false });
   });
@@ -42,10 +46,10 @@ describe('Agent Router', () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
           suggestedAgents: ['planner', 'coder', 'tester', 'reviewer'],
-          complexity: 3
+          confidence: 0.8
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.agents.length).toBe(4);
         expect(result.agents.map(a => a.type)).toContain('planner');
@@ -58,10 +62,11 @@ describe('Agent Router', () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
           suggestedAgents: ['coordinator', 'coder', 'tester'],
-          complexity: 6
+          suggestedTopology: 'hierarchical',
+          confidence: 0.8
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         const coordinator = result.agents.find(a => a.type === 'coordinator');
         expect(coordinator?.role).toBe('coordinator');
@@ -76,10 +81,10 @@ describe('Agent Router', () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
           suggestedAgents: ['coder', 'tester', 'reviewer'],
-          complexity: 3
+          confidence: 0.8
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         const coder = result.agents.find(a => a.type === 'coder');
         const reviewer = result.agents.find(a => a.type === 'reviewer');
@@ -97,7 +102,7 @@ describe('Agent Router', () => {
           complexity: 1
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.topology).toBe('single');
       });
@@ -107,10 +112,10 @@ describe('Agent Router', () => {
           ticketType: 'bug',
           suggestedAgents: ['researcher', 'coder', 'tester'],
           suggestedTopology: 'mesh',
-          complexity: 3
+          confidence: 0.8
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.topology).toBe('mesh');
       });
@@ -120,10 +125,10 @@ describe('Agent Router', () => {
           ticketType: 'feature',
           suggestedAgents: ['planner', 'coder', 'tester', 'reviewer', 'api-docs'],
           suggestedTopology: 'mesh',
-          complexity: 5
+          confidence: 0.7
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.topology).toBe('hierarchical');
         expect(result.reasoning).toContain('Upgraded to hierarchical topology for 4+ agents');
@@ -134,10 +139,10 @@ describe('Agent Router', () => {
           ticketType: 'feature',
           suggestedAgents: ['coordinator', 'coder', 'tester'],
           suggestedTopology: 'hierarchical',
-          complexity: 7
+          confidence: 0.85
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.topology).toBe('hierarchical');
       });
@@ -149,10 +154,10 @@ describe('Agent Router', () => {
           ticketType: 'feature',
           suggestedAgents: ['coder', 'tester', 'reviewer', 'api-docs', 'security-auditor'],
           suggestedTopology: 'mesh',
-          complexity: 6
+          confidence: 0.75
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.topology).toBe('hierarchical');
         expect(result.agents.find(a => a.type === 'coordinator')).toBeDefined();
@@ -164,10 +169,10 @@ describe('Agent Router', () => {
           ticketType: 'feature',
           suggestedAgents: ['coordinator', 'coder', 'tester'],
           suggestedTopology: 'hierarchical',
-          complexity: 6
+          confidence: 0.75
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         const coordinators = result.agents.filter(a => a.type === 'coordinator');
         expect(coordinators.length).toBe(1);
@@ -178,10 +183,10 @@ describe('Agent Router', () => {
           ticketType: 'feature',
           suggestedAgents: ['coder', 'tester', 'reviewer', 'api-docs', 'security-auditor'],
           suggestedTopology: 'hierarchical',
-          complexity: 6
+          confidence: 0.75
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.agents[0].type).toBe('coordinator');
         expect(result.agents[0].role).toBe('coordinator');
@@ -201,10 +206,10 @@ describe('Agent Router', () => {
           ticketType: 'feature',
           keywords: ['api', 'database'],
           suggestedAgents: ['planner', 'coder'],
-          complexity: 5
+          confidence: 0.7
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         // Should use learned pattern with high success rate
         expect(result.confidence).toBeGreaterThan(0.7);
@@ -222,10 +227,10 @@ describe('Agent Router', () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
           suggestedAgents: ['planner', 'coder', 'tester'],
-          complexity: 5
+          confidence: 0.7
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         // Should fall back to analysis-based assignment
         expect(result.agents.length).toBeGreaterThan(1);
@@ -237,10 +242,10 @@ describe('Agent Router', () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'bug',
           suggestedAgents: ['researcher', 'coder', 'tester'],
-          complexity: 3
+          confidence: 0.8
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         // Should still return valid assignment
         expect(result.agents.length).toBeGreaterThan(0);
@@ -252,10 +257,10 @@ describe('Agent Router', () => {
       it('should include ticket type in reasoning', async () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'bug',
-          complexity: 3
+          confidence: 0.8
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.reasoning.some(r => r.includes('bug'))).toBe(true);
       });
@@ -263,10 +268,10 @@ describe('Agent Router', () => {
       it('should include complexity in reasoning', async () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
-          complexity: 7
+          confidence: 0.85
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.reasoning.some(r => r.includes('7'))).toBe(true);
       });
@@ -275,10 +280,10 @@ describe('Agent Router', () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
           suggestedAgents: ['planner', 'coder'],
-          complexity: 3
+          confidence: 0.8
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.reasoning.some(r => r.includes('planner'))).toBe(true);
         expect(result.reasoning.some(r => r.includes('coder'))).toBe(true);
@@ -289,10 +294,10 @@ describe('Agent Router', () => {
       it('should have default confidence of 0.6 without learned patterns', async () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
-          complexity: 5
+          confidence: 0.7
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.confidence).toBe(0.6);
       });
@@ -308,10 +313,10 @@ describe('Agent Router', () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
           keywords: ['api'],
-          complexity: 3
+          confidence: 0.8
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.confidence).toBeGreaterThanOrEqual(0.7);
       });
@@ -325,7 +330,7 @@ describe('Agent Router', () => {
           complexity: 1
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         // Should still return a valid result, possibly with default agents
         expect(result).toBeDefined();
@@ -339,7 +344,7 @@ describe('Agent Router', () => {
           suggestedAgents: ['coordinator', 'coder', 'tester', 'reviewer']
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result.topology).toBe('hierarchical');
         expect(result.agents.find(a => a.role === 'coordinator')).toBeDefined();
@@ -348,10 +353,10 @@ describe('Agent Router', () => {
       it('should handle unknown ticket type', async () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'unknown' as any,
-          complexity: 3
+          confidence: 0.8
         });
 
-        const result = await assignAgents(analysis);
+        const result = await router.assignAgents(analysis);
 
         expect(result).toBeDefined();
         expect(result.agents.length).toBeGreaterThan(0);
@@ -364,7 +369,7 @@ describe('Agent Router', () => {
       const analysis: AnalysisResult = createMockAnalysis({
         ticketType: 'feature',
         keywords: ['api', 'database'],
-        complexity: 5
+        confidence: 0.7
       });
 
       const assignment: AgentAssignment = {
@@ -396,7 +401,7 @@ describe('Agent Router', () => {
     it('should include success rate in stored pattern', async () => {
       const analysis: AnalysisResult = createMockAnalysis({
         ticketType: 'bug',
-        complexity: 3
+        confidence: 0.8
       });
 
       const assignment: AgentAssignment = {
@@ -422,7 +427,7 @@ describe('Agent Router', () => {
 
       const analysis: AnalysisResult = createMockAnalysis({
         ticketType: 'feature',
-        complexity: 5
+        confidence: 0.7
       });
 
       const assignment: AgentAssignment = {
@@ -445,7 +450,7 @@ function createMockAnalysis(overrides: Partial<AnalysisResult>): AnalysisResult 
     ticketType: 'feature',
     keywords: [],
     suggestedLabels: [],
-    complexity: 5,
+    confidence: 0.7,
     estimatedHours: 4,
     suggestedAgents: ['coder', 'tester'],
     suggestedTopology: 'mesh',
