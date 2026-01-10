@@ -124,3 +124,13 @@ export interface TicketQuestion {
 export interface TicketWithQuestions extends Ticket {
   questions: TicketQuestion[];
 }
+
+/**
+ * TASK-076/077/078/079: Re-export neural types
+ */
+export * from './neural';
+
+/**
+ * TASK-084/085/086/087: Re-export transfer types
+ */
+export * from './transfer';

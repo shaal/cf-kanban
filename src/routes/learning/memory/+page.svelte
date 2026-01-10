@@ -4,16 +4,20 @@
 	 *
 	 * Displays memory namespaces with entry counts.
 	 * Click on a namespace card to view its entries.
+	 * Includes search (TASK-082) and add entry (TASK-083) functionality.
 	 */
 	import type { PageData } from './$types';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import { Database, FolderOpen, ArrowLeft, RefreshCw, AlertCircle } from 'lucide-svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { MemorySearch, AddEntryForm } from '$lib/components/memory';
+	import { Database, FolderOpen, ArrowLeft, RefreshCw, AlertCircle, Plus, Search } from 'lucide-svelte';
+	import { invalidateAll, goto } from '$app/navigation';
 
 	export let data: PageData;
 
 	let isRefreshing = false;
+	let showSearch = $state(false);
+	let showAddForm = $state(false);
 
 	async function handleRefresh() {
 		isRefreshing = true;
@@ -47,6 +51,17 @@
 
 	// Calculate total entries across all namespaces
 	$: totalEntries = data.namespaces.reduce((sum, ns) => sum + ns.entryCount, 0);
+	$: namespaceNames = data.namespaces.map(ns => ns.name);
+
+	function handleSearchSelect(event: CustomEvent<{ key: string; namespace: string }>) {
+		const entry = event.detail;
+		goto(`/learning/memory/${encodeURIComponent(entry.namespace)}`);
+	}
+
+	async function handleEntryAdded() {
+		showAddForm = false;
+		await invalidateAll();
+	}
 </script>
 
 <svelte:head>
@@ -73,6 +88,22 @@
 					{data.namespaces.length} namespace{data.namespaces.length !== 1 ? 's' : ''}
 					| {totalEntries} total entries
 				</span>
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={() => showSearch = !showSearch}
+				>
+					<Search class="w-4 h-4 mr-2" />
+					Search
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={() => showAddForm = !showAddForm}
+				>
+					<Plus class="w-4 h-4 mr-2" />
+					Add Entry
+				</Button>
 				<Button
 					variant="outline"
 					size="sm"

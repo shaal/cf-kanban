@@ -16,5 +16,8 @@ export { default as LineChart } from './LineChart.svelte';
 export { default as BarChart } from './BarChart.svelte';
 export { default as AreaChart } from './AreaChart.svelte';
 
+// Force Graph
+export { default as ForceGraph } from './ForceGraph.svelte';
+
 // Types
 export * from './types';

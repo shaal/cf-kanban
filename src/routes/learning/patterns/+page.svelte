@@ -7,8 +7,8 @@
    */
   import type { PageData } from './$types';
   import ForceGraph from '$lib/components/viz/ForceGraph.svelte';
-  import type { GraphNode, GraphData } from '$lib/components/viz/ForceGraph.svelte';
-  import type { Pattern, PatternFilters, PatternDomain, PatternNode, PatternLink } from '$lib/types/patterns';
+  import type { ForceNode, ForceGraphData } from '$lib/components/viz/types';
+  import type { Pattern, PatternFilters, PatternDomain } from '$lib/types/patterns';
   import { DEFAULT_PATTERN_FILTERS, DOMAIN_CONFIGS } from '$lib/types/patterns';
   import Card from '$lib/components/ui/Card.svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -73,7 +73,7 @@
   });
 
   // Convert patterns to graph data
-  let graphData: GraphData = $derived.by(() => {
+  let graphData: ForceGraphData = $derived.by(() => {
     const domainColors: Record<PatternDomain, string> = {
       auth: '#4f46e5',
       api: '#0891b2',
@@ -87,7 +87,7 @@
       general: '#6b7280'
     };
 
-    const nodes: GraphNode[] = filteredPatterns.map(pattern => ({
+    const nodes: ForceNode[] = filteredPatterns.map(pattern => ({
       id: pattern.id,
       label: pattern.name,
       group: pattern.domain,
@@ -136,7 +136,7 @@
     return { nodes, links };
   });
 
-  function handleNodeClick(node: GraphNode) {
+  function handleNodeClick(node: ForceNode) {
     const pattern = node.data as Pattern;
 
     // Multi-select with shift key
@@ -149,7 +149,7 @@
     }
   }
 
-  function handleNodeHover(node: GraphNode | null) {
+  function handleNodeHover(node: ForceNode | null) {
     hoveredPattern = node ? (node.data as Pattern) : null;
   }
 

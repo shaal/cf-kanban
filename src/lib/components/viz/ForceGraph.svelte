@@ -1,438 +1,511 @@
 <script lang="ts">
-  /**
-   * ForceGraph Component
-   *
-   * TASK-068 (D3 Agent dependency): Force-directed graph visualization
-   *
-   * A D3-powered force graph component for visualizing nodes and links
-   * with interactive features like dragging, zooming, and node selection.
-   */
-  import { onMount, onDestroy } from 'svelte';
-  import { cn } from '$lib/utils';
+	/**
+	 * ForceGraph Component
+	 *
+	 * TASK-068: Implement Force-Directed Graph
+	 *
+	 * A D3-powered force graph component for visualizing nodes and links
+	 * with interactive features like dragging, zooming, and node selection.
+	 */
+	import { browser } from '$app/environment';
+	import { onMount, onDestroy } from 'svelte';
+	import * as d3 from 'd3';
+	import { cn } from '$lib/utils';
+	import type { ForceNode, ForceLink, ForceGraphData } from './types';
+	import { DEFAULT_COLORS } from './types';
 
-  /**
-   * Node data structure for the force graph
-   */
-  export interface GraphNode {
-    id: string;
-    label: string;
-    group?: string;
-    color?: string;
-    radius?: number;
-    data?: Record<string, unknown>;
-    x?: number;
-    y?: number;
-    fx?: number | null;
-    fy?: number | null;
-  }
+	interface Props {
+		data: ForceGraphData;
+		width?: number;
+		height?: number;
+		nodeRadius?: number;
+		linkDistance?: number;
+		chargeStrength?: number;
+		centerStrength?: number;
+		collisionRadius?: number;
+		onNodeClick?: (node: ForceNode) => void;
+		onNodeHover?: (node: ForceNode | null) => void;
+		onLinkClick?: (link: ForceLink) => void;
+		selectedNodeId?: string | null;
+		highlightedNodeIds?: string[];
+		animate?: boolean;
+		showLabels?: boolean;
+		class?: string;
+	}
 
-  /**
-   * Link data structure for the force graph
-   */
-  export interface GraphLink {
-    source: string | GraphNode;
-    target: string | GraphNode;
-    value?: number;
-    label?: string;
-  }
+	let {
+		data,
+		width = 800,
+		height = 600,
+		nodeRadius = 20,
+		linkDistance = 100,
+		chargeStrength = -400,
+		centerStrength = 0.1,
+		collisionRadius = 30,
+		onNodeClick,
+		onNodeHover,
+		onLinkClick,
+		selectedNodeId = null,
+		highlightedNodeIds = [],
+		animate = true,
+		showLabels = true,
+		class: className = ''
+	}: Props = $props();
 
-  /**
-   * Graph data structure
-   */
-  export interface GraphData {
-    nodes: GraphNode[];
-    links: GraphLink[];
-  }
+	let svgRef: SVGSVGElement | null = $state(null);
+	let mounted = $state(false);
 
-  interface Props {
-    data: GraphData;
-    width?: number;
-    height?: number;
-    nodeRadius?: number;
-    linkDistance?: number;
-    chargeStrength?: number;
-    onNodeClick?: (node: GraphNode) => void;
-    onNodeHover?: (node: GraphNode | null) => void;
-    selectedNodeId?: string | null;
-    highlightedNodeIds?: string[];
-    class?: string;
-  }
+	// D3 simulation and selections
+	let simulation: d3.Simulation<d3.SimulationNodeDatum, d3.SimulationLinkDatum<d3.SimulationNodeDatum>> | null = null;
+	let zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null;
 
-  let {
-    data,
-    width = 800,
-    height = 600,
-    nodeRadius = 20,
-    linkDistance = 100,
-    chargeStrength = -300,
-    onNodeClick,
-    onNodeHover,
-    selectedNodeId = null,
-    highlightedNodeIds = [],
-    class: className = ''
-  }: Props = $props();
+	// Internal state for rendering
+	let nodes: (ForceNode & d3.SimulationNodeDatum)[] = $state([]);
+	let links: (ForceLink & { source: ForceNode & d3.SimulationNodeDatum; target: ForceNode & d3.SimulationNodeDatum })[] = $state([]);
+	let transform = $state({ x: 0, y: 0, k: 1 });
 
-  let svgElement: SVGSVGElement;
-  let simulation: ReturnType<typeof createSimulation> | null = null;
-  let nodes: GraphNode[] = $state([]);
-  let links: { source: GraphNode; target: GraphNode; value?: number; label?: string }[] = $state([]);
-  let transform = $state({ x: 0, y: 0, k: 1 });
-  let isDragging = $state(false);
-  let draggedNode: GraphNode | null = $state(null);
+	// Get unique groups for color mapping
+	const groups = $derived(() => {
+		const uniqueGroups = [...new Set(data.nodes.map(n => n.group).filter(Boolean))];
+		return uniqueGroups as string[];
+	});
 
-  // Color scale for groups
-  const colorScale = [
-    '#4f46e5', // indigo
-    '#0891b2', // cyan
-    '#059669', // emerald
-    '#d97706', // amber
-    '#dc2626', // red
-    '#7c3aed', // violet
-    '#2563eb', // blue
-    '#16a34a', // green
-    '#ea580c', // orange
-    '#be185d'  // pink
-  ];
+	function getNodeColor(node: ForceNode, index: number): string {
+		if (node.color) return node.color;
+		if (node.group) {
+			const groupIndex = groups.indexOf(node.group);
+			return DEFAULT_COLORS[groupIndex % DEFAULT_COLORS.length];
+		}
+		return DEFAULT_COLORS[index % DEFAULT_COLORS.length];
+	}
 
-  function getGroupColor(group: string | undefined, index: number): string {
-    if (!group) return colorScale[index % colorScale.length];
-    const groupIndex = [...new Set(data.nodes.map(n => n.group))].indexOf(group);
-    return colorScale[groupIndex % colorScale.length];
-  }
+	function isHighlighted(nodeId: string): boolean {
+		return highlightedNodeIds.includes(nodeId);
+	}
 
-  /**
-   * Simple force simulation (minimal implementation)
-   */
-  function createSimulation() {
-    const nodeMap = new Map<string, GraphNode>();
+	function isSelected(nodeId: string): boolean {
+		return selectedNodeId === nodeId;
+	}
 
-    // Initialize node positions
-    const simulatedNodes = data.nodes.map((node, i) => {
-      const angle = (2 * Math.PI * i) / data.nodes.length;
-      const radius = Math.min(width, height) / 3;
-      const simNode = {
-        ...node,
-        x: node.x ?? width / 2 + radius * Math.cos(angle),
-        y: node.y ?? height / 2 + radius * Math.sin(angle),
-        vx: 0,
-        vy: 0
-      };
-      nodeMap.set(node.id, simNode);
-      return simNode;
-    });
+	function isConnectedToSelected(node: ForceNode): boolean {
+		if (!selectedNodeId) return false;
+		return links.some(
+			l =>
+				(typeof l.source === 'object' && l.source.id === selectedNodeId && typeof l.target === 'object' && l.target.id === node.id) ||
+				(typeof l.target === 'object' && l.target.id === selectedNodeId && typeof l.source === 'object' && l.source.id === node.id)
+		);
+	}
 
-    // Create links with node references
-    const simulatedLinks = data.links.map(link => ({
-      source: nodeMap.get(typeof link.source === 'string' ? link.source : link.source.id) as GraphNode,
-      target: nodeMap.get(typeof link.target === 'string' ? link.target : link.target.id) as GraphNode,
-      value: link.value,
-      label: link.label
-    })).filter(l => l.source && l.target);
+	function initializeGraph() {
+		if (!svgRef || !browser) return;
 
-    let alpha = 1;
-    let alphaDecay = 0.02;
-    let running = true;
+		// Clean up existing simulation
+		if (simulation) {
+			simulation.stop();
+		}
 
-    function tick() {
-      if (!running || alpha < 0.01) return;
+		// Create node copies with simulation properties
+		const nodeMap = new Map<string, ForceNode & d3.SimulationNodeDatum>();
+		const simulationNodes: (ForceNode & d3.SimulationNodeDatum)[] = data.nodes.map((node, i) => {
+			const simNode = {
+				...node,
+				x: node.x ?? width / 2 + (Math.random() - 0.5) * 100,
+				y: node.y ?? height / 2 + (Math.random() - 0.5) * 100,
+				index: i
+			};
+			nodeMap.set(node.id, simNode);
+			return simNode;
+		});
 
-      // Apply forces
-      simulatedNodes.forEach((node, i) => {
-        // Center force
-        const cx = width / 2 - (node.x ?? 0);
-        const cy = height / 2 - (node.y ?? 0);
-        node.vx = (node.vx ?? 0) + cx * 0.01 * alpha;
-        node.vy = (node.vy ?? 0) + cy * 0.01 * alpha;
+		// Create link copies with node references
+		const simulationLinks = data.links.map(link => {
+			const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+			const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+			return {
+				...link,
+				source: nodeMap.get(sourceId)!,
+				target: nodeMap.get(targetId)!
+			};
+		}).filter(l => l.source && l.target);
 
-        // Repulsion between nodes
-        simulatedNodes.forEach((other, j) => {
-          if (i === j) return;
-          const dx = (node.x ?? 0) - (other.x ?? 0);
-          const dy = (node.y ?? 0) - (other.y ?? 0);
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = (chargeStrength / (dist * dist)) * alpha;
-          node.vx = (node.vx ?? 0) + (dx / dist) * -force;
-          node.vy = (node.vy ?? 0) + (dy / dist) * -force;
-        });
-      });
+		// Initialize simulation
+		simulation = d3.forceSimulation(simulationNodes)
+			.force('link', d3.forceLink(simulationLinks)
+				.id((d: any) => d.id)
+				.distance(linkDistance)
+			)
+			.force('charge', d3.forceManyBody()
+				.strength(chargeStrength)
+			)
+			.force('center', d3.forceCenter(width / 2, height / 2)
+				.strength(centerStrength)
+			)
+			.force('collision', d3.forceCollide()
+				.radius(collisionRadius)
+			)
+			.alphaDecay(0.02)
+			.on('tick', () => {
+				nodes = [...simulationNodes];
+				links = [...simulationLinks] as any;
+			});
 
-      // Link forces
-      simulatedLinks.forEach(link => {
-        const dx = (link.target.x ?? 0) - (link.source.x ?? 0);
-        const dy = (link.target.y ?? 0) - (link.source.y ?? 0);
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = (dist - linkDistance) * 0.1 * alpha;
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
+		// Set up zoom behavior
+		const svg = d3.select(svgRef);
+		zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
+			.scaleExtent([0.1, 4])
+			.on('zoom', (event) => {
+				transform = {
+					x: event.transform.x,
+					y: event.transform.y,
+					k: event.transform.k
+				};
+			});
 
-        link.source.vx = (link.source.vx ?? 0) + fx;
-        link.source.vy = (link.source.vy ?? 0) + fy;
-        link.target.vx = (link.target.vx ?? 0) - fx;
-        link.target.vy = (link.target.vy ?? 0) - fy;
-      });
+		svg.call(zoomBehavior);
 
-      // Apply velocities
-      simulatedNodes.forEach(node => {
-        if (node.fx != null) {
-          node.x = node.fx;
-          node.vx = 0;
-        } else {
-          node.vx = (node.vx ?? 0) * 0.6;
-          node.x = (node.x ?? 0) + (node.vx ?? 0);
-        }
+		// Set up drag behavior
+		const drag = d3.drag<SVGGElement, ForceNode & d3.SimulationNodeDatum>()
+			.on('start', (event, d) => {
+				if (!event.active) simulation?.alphaTarget(0.3).restart();
+				d.fx = d.x;
+				d.fy = d.y;
+			})
+			.on('drag', (event, d) => {
+				d.fx = event.x;
+				d.fy = event.y;
+			})
+			.on('end', (event, d) => {
+				if (!event.active) simulation?.alphaTarget(0);
+				d.fx = null;
+				d.fy = null;
+			});
 
-        if (node.fy != null) {
-          node.y = node.fy;
-          node.vy = 0;
-        } else {
-          node.vy = (node.vy ?? 0) * 0.6;
-          node.y = (node.y ?? 0) + (node.vy ?? 0);
-        }
-      });
+		// Apply drag behavior to node groups (will be called after render)
+		requestAnimationFrame(() => {
+			svg.selectAll<SVGGElement, ForceNode & d3.SimulationNodeDatum>('.node-group')
+				.data(simulationNodes)
+				.call(drag);
+		});
 
-      alpha *= (1 - alphaDecay);
-      nodes = [...simulatedNodes];
-      links = [...simulatedLinks];
+		// Initial node positions with animation
+		if (animate) {
+			simulation.alpha(1).restart();
+		}
+	}
 
-      if (running) {
-        requestAnimationFrame(tick);
-      }
-    }
+	function handleNodeClick(event: MouseEvent, node: ForceNode) {
+		event.stopPropagation();
+		onNodeClick?.(node);
+	}
 
-    return {
-      start() {
-        alpha = 1;
-        running = true;
-        tick();
-      },
-      stop() {
-        running = false;
-      },
-      restart() {
-        alpha = 0.3;
-        if (!running) {
-          running = true;
-          tick();
-        }
-      },
-      nodes: simulatedNodes,
-      links: simulatedLinks
-    };
-  }
+	function handleLinkClick(event: MouseEvent, link: ForceLink) {
+		event.stopPropagation();
+		onLinkClick?.(link);
+	}
 
-  function handleNodeMouseDown(event: MouseEvent, node: GraphNode) {
-    event.preventDefault();
-    isDragging = true;
-    draggedNode = node;
-    node.fx = node.x;
-    node.fy = node.y;
-  }
+	function resetZoom() {
+		if (!svgRef || !zoomBehavior) return;
+		const svg = d3.select(svgRef);
+		svg.transition().duration(750).call(
+			zoomBehavior.transform,
+			d3.zoomIdentity
+		);
+	}
 
-  function handleMouseMove(event: MouseEvent) {
-    if (!isDragging || !draggedNode) return;
+	function zoomToFit() {
+		if (!svgRef || !zoomBehavior || nodes.length === 0) return;
 
-    const rect = svgElement.getBoundingClientRect();
-    const x = (event.clientX - rect.left - transform.x) / transform.k;
-    const y = (event.clientY - rect.top - transform.y) / transform.k;
+		const padding = 40;
+		const xExtent = d3.extent(nodes, d => d.x) as [number, number];
+		const yExtent = d3.extent(nodes, d => d.y) as [number, number];
 
-    draggedNode.fx = x;
-    draggedNode.fy = y;
-    simulation?.restart();
-  }
+		const graphWidth = xExtent[1] - xExtent[0] + padding * 2;
+		const graphHeight = yExtent[1] - yExtent[0] + padding * 2;
 
-  function handleMouseUp() {
-    if (draggedNode) {
-      draggedNode.fx = null;
-      draggedNode.fy = null;
-    }
-    isDragging = false;
-    draggedNode = null;
-  }
+		const scale = Math.min(width / graphWidth, height / graphHeight, 1);
+		const translateX = width / 2 - (xExtent[0] + xExtent[1]) / 2 * scale;
+		const translateY = height / 2 - (yExtent[0] + yExtent[1]) / 2 * scale;
 
-  function handleNodeClick(node: GraphNode) {
-    if (!isDragging) {
-      onNodeClick?.(node);
-    }
-  }
+		const svg = d3.select(svgRef);
+		svg.transition().duration(750).call(
+			zoomBehavior.transform,
+			d3.zoomIdentity.translate(translateX, translateY).scale(scale)
+		);
+	}
 
-  function handleWheel(event: WheelEvent) {
-    event.preventDefault();
-    const scaleFactor = event.deltaY > 0 ? 0.9 : 1.1;
-    const rect = svgElement.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
+	onMount(() => {
+		mounted = true;
+		if (data.nodes.length > 0) {
+			initializeGraph();
+		}
+	});
 
-    const newK = Math.max(0.1, Math.min(4, transform.k * scaleFactor));
-    transform = {
-      x: mouseX - (mouseX - transform.x) * (newK / transform.k),
-      y: mouseY - (mouseY - transform.y) * (newK / transform.k),
-      k: newK
-    };
-  }
+	onDestroy(() => {
+		if (simulation) {
+			simulation.stop();
+			simulation = null;
+		}
+	});
 
-  onMount(() => {
-    simulation = createSimulation();
-    simulation.start();
-  });
+	// Re-initialize when data changes
+	$effect(() => {
+		if (browser && mounted && data.nodes.length > 0) {
+			initializeGraph();
+		}
+	});
 
-  onDestroy(() => {
-    simulation?.stop();
-  });
-
-  // Restart simulation when data changes
-  $effect(() => {
-    if (data && simulation) {
-      simulation.stop();
-      simulation = createSimulation();
-      simulation.start();
-    }
-  });
-
-  function isHighlighted(nodeId: string): boolean {
-    return highlightedNodeIds.includes(nodeId);
-  }
-
-  function isSelected(nodeId: string): boolean {
-    return selectedNodeId === nodeId;
-  }
+	// Export zoom controls for parent components
+	export { resetZoom, zoomToFit };
 </script>
 
-<svg
-  bind:this={svgElement}
-  {width}
-  {height}
-  class={cn('force-graph', className)}
-  role="img"
-  aria-label="Force-directed graph visualization"
-  onmousemove={handleMouseMove}
-  onmouseup={handleMouseUp}
-  onmouseleave={handleMouseUp}
-  onwheel={handleWheel}
->
-  <g transform="translate({transform.x}, {transform.y}) scale({transform.k})">
-    <!-- Links -->
-    <g class="links">
-      {#each links as link}
-        <line
-          x1={link.source.x}
-          y1={link.source.y}
-          x2={link.target.x}
-          y2={link.target.y}
-          stroke="#94a3b8"
-          stroke-width={Math.sqrt(link.value ?? 1)}
-          stroke-opacity="0.6"
-        />
-      {/each}
-    </g>
+<div class={cn('force-graph-container relative', className)}>
+	{#if browser}
+		<svg
+			bind:this={svgRef}
+			{width}
+			{height}
+			class="force-graph"
+			role="img"
+			aria-label="Force-directed graph visualization"
+		>
+			<defs>
+				<!-- Arrow marker for directed graphs -->
+				<marker
+					id="arrowhead"
+					viewBox="0 -5 10 10"
+					refX="25"
+					refY="0"
+					markerWidth="6"
+					markerHeight="6"
+					orient="auto"
+				>
+					<path d="M0,-5L10,0L0,5" fill="#94a3b8" />
+				</marker>
 
-    <!-- Nodes -->
-    <g class="nodes">
-      {#each nodes as node, i}
-        {@const radius = node.radius ?? nodeRadius}
-        {@const color = node.color ?? getGroupColor(node.group, i)}
-        <g
-          class="node-group"
-          transform="translate({node.x}, {node.y})"
-          role="button"
-          tabindex="0"
-          aria-label={node.label}
-          onmousedown={(e) => handleNodeMouseDown(e, node)}
-          onclick={() => handleNodeClick(node)}
-          onmouseenter={() => onNodeHover?.(node)}
-          onmouseleave={() => onNodeHover?.(null)}
-          onkeydown={(e) => e.key === 'Enter' && handleNodeClick(node)}
-        >
-          <!-- Selection ring -->
-          {#if isSelected(node.id)}
-            <circle
-              r={radius + 4}
-              fill="none"
-              stroke="#3b82f6"
-              stroke-width="3"
-              class="selection-ring"
-            />
-          {/if}
+				<!-- Glow filter for selected nodes -->
+				<filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+					<feGaussianBlur stdDeviation="3" result="coloredBlur" />
+					<feMerge>
+						<feMergeNode in="coloredBlur" />
+						<feMergeNode in="SourceGraphic" />
+					</feMerge>
+				</filter>
+			</defs>
 
-          <!-- Highlight ring -->
-          {#if isHighlighted(node.id) && !isSelected(node.id)}
-            <circle
-              r={radius + 3}
-              fill="none"
-              stroke="#fbbf24"
-              stroke-width="2"
-              class="highlight-ring"
-            />
-          {/if}
+			<g class="graph-content" transform="translate({transform.x}, {transform.y}) scale({transform.k})">
+				<!-- Links -->
+				<g class="links">
+					{#each links as link}
+						{@const sourceX = typeof link.source === 'object' ? link.source.x ?? 0 : 0}
+						{@const sourceY = typeof link.source === 'object' ? link.source.y ?? 0 : 0}
+						{@const targetX = typeof link.target === 'object' ? link.target.x ?? 0 : 0}
+						{@const targetY = typeof link.target === 'object' ? link.target.y ?? 0 : 0}
+						{@const isSelectedLink = selectedNodeId &&
+							(typeof link.source === 'object' && link.source.id === selectedNodeId ||
+							 typeof link.target === 'object' && link.target.id === selectedNodeId)}
+						<g class="link-group">
+							<line
+								x1={sourceX}
+								y1={sourceY}
+								x2={targetX}
+								y2={targetY}
+								stroke={isSelectedLink ? '#3b82f6' : (link.color ?? '#94a3b8')}
+								stroke-width={Math.sqrt(link.value ?? 1) * (isSelectedLink ? 2 : 1)}
+								stroke-opacity={isSelectedLink ? 1 : 0.6}
+								class="link-line"
+								role="button"
+								tabindex="-1"
+								onclick={(e) => handleLinkClick(e, link)}
+							/>
+							{#if link.label}
+								<text
+									x={(sourceX + targetX) / 2}
+									y={(sourceY + targetY) / 2}
+									class="link-label"
+									text-anchor="middle"
+									dy="-5"
+									fill="#6b7280"
+									font-size="10"
+								>
+									{link.label}
+								</text>
+							{/if}
+						</g>
+					{/each}
+				</g>
 
-          <!-- Node circle -->
-          <circle
-            r={radius}
-            fill={color}
-            stroke="#fff"
-            stroke-width="2"
-            class="node-circle"
-            class:cursor-grab={!isDragging}
-            class:cursor-grabbing={isDragging}
-          />
+				<!-- Nodes -->
+				<g class="nodes">
+					{#each nodes as node, i}
+						{@const x = node.x ?? 0}
+						{@const y = node.y ?? 0}
+						{@const radius = node.radius ?? nodeRadius}
+						{@const color = getNodeColor(node, i)}
+						{@const selected = isSelected(node.id)}
+						{@const highlighted = isHighlighted(node.id)}
+						{@const connected = isConnectedToSelected(node)}
+						{@const dimmed = selectedNodeId && !selected && !connected && !highlighted}
+						<g
+							class="node-group"
+							class:selected
+							class:highlighted
+							class:dimmed
+							transform="translate({x}, {y})"
+							role="button"
+							tabindex="0"
+							aria-label={node.label ?? node.id}
+							onclick={(e) => handleNodeClick(e, node)}
+							onmouseenter={() => onNodeHover?.(node)}
+							onmouseleave={() => onNodeHover?.(null)}
+							onkeydown={(e) => e.key === 'Enter' && onNodeClick?.(node)}
+						>
+							<!-- Selection ring -->
+							{#if selected}
+								<circle
+									r={radius + 6}
+									fill="none"
+									stroke="#3b82f6"
+									stroke-width="3"
+									class="selection-ring"
+									filter="url(#glow)"
+								/>
+							{/if}
 
-          <!-- Node label -->
-          <text
-            y={radius + 14}
-            text-anchor="middle"
-            class="node-label"
-            fill="#374151"
-            font-size="12"
-          >
-            {node.label}
-          </text>
-        </g>
-      {/each}
-    </g>
-  </g>
-</svg>
+							<!-- Highlight ring -->
+							{#if highlighted && !selected}
+								<circle
+									r={radius + 4}
+									fill="none"
+									stroke="#fbbf24"
+									stroke-width="2"
+									class="highlight-ring"
+								/>
+							{/if}
+
+							<!-- Node shadow -->
+							<circle
+								r={radius}
+								fill="rgba(0,0,0,0.1)"
+								transform="translate(2, 2)"
+							/>
+
+							<!-- Node circle -->
+							<circle
+								r={radius}
+								fill={color}
+								stroke="#fff"
+								stroke-width="2.5"
+								class="node-circle"
+							/>
+
+							<!-- Node label -->
+							{#if showLabels && (node.label || node.id)}
+								<text
+									y={radius + 16}
+									text-anchor="middle"
+									class="node-label"
+									fill="#374151"
+									font-size="12"
+									font-weight="500"
+								>
+									{node.label ?? node.id}
+								</text>
+							{/if}
+						</g>
+					{/each}
+				</g>
+			</g>
+		</svg>
+	{:else}
+		<div
+			class="graph-placeholder bg-gray-100 animate-pulse rounded-lg"
+			style="width: {width}px; height: {height}px;"
+		></div>
+	{/if}
+</div>
 
 <style>
-  .force-graph {
-    background: #f8fafc;
-    border-radius: 0.5rem;
-    border: 1px solid #e2e8f0;
-  }
+	.force-graph {
+		background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+		border-radius: 0.5rem;
+		border: 1px solid #e2e8f0;
+		cursor: grab;
+	}
 
-  .node-group {
-    outline: none;
-  }
+	.force-graph:active {
+		cursor: grabbing;
+	}
 
-  .node-circle {
-    transition: filter 0.2s ease;
-  }
+	.node-group {
+		outline: none;
+		cursor: pointer;
+	}
 
-  .node-group:hover .node-circle {
-    filter: brightness(1.1);
-  }
+	.node-circle {
+		transition: filter 0.15s ease, transform 0.15s ease;
+	}
 
-  .node-group:focus .node-circle {
-    filter: brightness(1.1);
-  }
+	.node-group:hover .node-circle {
+		filter: brightness(1.1) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+	}
 
-  .node-label {
-    pointer-events: none;
-    user-select: none;
-  }
+	.node-group:focus .node-circle {
+		filter: brightness(1.1);
+	}
 
-  .selection-ring {
-    animation: pulse 1.5s ease-in-out infinite;
-  }
+	.node-group.selected .node-circle {
+		filter: brightness(1.05);
+	}
 
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
+	.node-group.dimmed {
+		opacity: 0.4;
+	}
 
-  .cursor-grab {
-    cursor: grab;
-  }
+	.node-group.dimmed .node-circle {
+		filter: saturate(0.5);
+	}
 
-  .cursor-grabbing {
-    cursor: grabbing;
-  }
+	.node-label {
+		pointer-events: none;
+		user-select: none;
+		text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+	}
+
+	.link-line {
+		cursor: pointer;
+		transition: stroke-width 0.15s ease, stroke-opacity 0.15s ease;
+	}
+
+	.link-line:hover {
+		stroke-opacity: 1;
+	}
+
+	.link-label {
+		pointer-events: none;
+		user-select: none;
+	}
+
+	.selection-ring {
+		animation: pulse 2s ease-in-out infinite;
+	}
+
+	.highlight-ring {
+		animation: highlight-pulse 1.5s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 1;
+			stroke-width: 3;
+		}
+		50% {
+			opacity: 0.6;
+			stroke-width: 4;
+		}
+	}
+
+	@keyframes highlight-pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.5; }
+	}
 </style>
