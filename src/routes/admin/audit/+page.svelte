@@ -28,7 +28,7 @@
   import { getActionDisplayName } from '$lib/types/admin';
   import type { AuditAction } from '@prisma/client';
 
-  export let data: PageData;
+  let { data }: { data: PageData } = $props();
 
   // State
   let searchQuery = $state('');

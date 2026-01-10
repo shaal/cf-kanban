@@ -39,7 +39,7 @@ export class AuditService {
           entityType: request.entityType,
           entityId: request.entityId || null,
           description: request.description,
-          metadata: request.metadata || {},
+          metadata: (request.metadata || {}) as object,
           ipAddress: request.ipAddress || null,
           userAgent: request.userAgent || null,
           isSensitive: request.isSensitive || false

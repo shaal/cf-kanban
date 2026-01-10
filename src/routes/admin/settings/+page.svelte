@@ -29,7 +29,7 @@
     ClaudeFlowSettings
   } from '$lib/types/admin';
 
-  export let data: PageData;
+  let { data }: { data: PageData } = $props();
 
   // Tab state
   let activeTab = $state<
@@ -268,7 +268,10 @@
               </label>
               <Input
                 type="number"
-                bind:value={projectSettings.maxConcurrentAgents}
+                value={String(projectSettings.maxConcurrentAgents)}
+                oninput={(e) => {
+                  projectSettings.maxConcurrentAgents = parseInt((e.target as HTMLInputElement).value) || 5;
+                }}
                 class="w-32"
               />
               <p class="mt-1 text-sm text-gray-500">
@@ -304,7 +307,7 @@
               </label>
               <Input
                 type="number"
-                value={projectSettings.autoArchiveAfterDays ?? ''}
+                value={projectSettings.autoArchiveAfterDays !== null ? String(projectSettings.autoArchiveAfterDays) : ''}
                 oninput={(e) => {
                   const val = (e.target as HTMLInputElement).value;
                   projectSettings.autoArchiveAfterDays = val
@@ -364,7 +367,10 @@
               </label>
               <Input
                 type="number"
-                bind:value={claudeFlowSettings.maxAgents}
+                value={String(claudeFlowSettings.maxAgents)}
+                oninput={(e) => {
+                  claudeFlowSettings.maxAgents = parseInt((e.target as HTMLInputElement).value) || 15;
+                }}
                 class="w-32"
               />
               <p class="mt-1 text-sm text-gray-500">

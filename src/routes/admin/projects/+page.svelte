@@ -26,7 +26,7 @@
     Brain
   } from 'lucide-svelte';
 
-  export let data: PageData;
+  let { data }: { data: PageData } = $props();
 
   // State
   let searchQuery = $state('');

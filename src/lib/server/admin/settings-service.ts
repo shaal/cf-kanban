@@ -117,7 +117,7 @@ export class SettingsService {
     const setting = await prisma.systemSettings.upsert({
       where: { key: request.key },
       update: {
-        value: request.value as object,
+        value: request.value as Record<string, unknown>,
         description: request.description,
         category: request.category,
         isSensitive: request.isSensitive,
@@ -125,7 +125,7 @@ export class SettingsService {
       },
       create: {
         key: request.key,
-        value: request.value as object,
+        value: request.value as Record<string, unknown>,
         description: request.description || null,
         category: request.category || 'general',
         isSensitive: request.isSensitive || false,
@@ -321,7 +321,7 @@ export class SettingsService {
         await prisma.systemSettings.create({
           data: {
             key: setting.key,
-            value: setting.value,
+            value: setting.value as Record<string, unknown>,
             description: setting.description,
             category: setting.category,
             updatedBy: adminId

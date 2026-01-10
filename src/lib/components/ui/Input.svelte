@@ -9,7 +9,7 @@
   import { cn } from '$lib/utils';
 
   interface Props {
-    type?: 'text' | 'email' | 'password' | 'search' | 'number' | 'tel' | 'url';
+    type?: 'text' | 'email' | 'password' | 'search' | 'number' | 'tel' | 'url' | 'date';
     value?: string;
     placeholder?: string;
     disabled?: boolean;
