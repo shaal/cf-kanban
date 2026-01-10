@@ -6,6 +6,7 @@
 	 * - Health Alert Toasts (GAP-3.5.2)
 	 * - Onboarding/Interactive Tutorials (GAP-8.3)
 	 * - AI Chat Assistant (GAP-8.1)
+	 * - Debug Output Panel (cf-kanban-jxq)
 	 */
 	import { onMount } from 'svelte';
 	import '../app.css';
@@ -13,6 +14,7 @@
 	import { HealthAlertToasts } from '$lib/components/ui';
 	import { WelcomeModal, GuidedTour, TourResumePrompt } from '$lib/components/onboarding';
 	import { ChatAssistant, ChatButton } from '$lib/components/chat';
+	import { DebugOutputPanel } from '$lib/components/debug';
 	import { onboardingStore } from '$lib/stores/onboarding';
 
 	let { children } = $props();
@@ -37,5 +39,8 @@
 <!-- GAP-8.1: AI Chat Assistant -->
 <ChatAssistant />
 <ChatButton />
+
+<!-- cf-kanban-jxq: Debug Output Panel -->
+<DebugOutputPanel />
 
 {@render children()}
