@@ -118,6 +118,25 @@
 	</header>
 
 	<div class="max-w-6xl mx-auto p-6">
+		<!-- Search Panel -->
+		{#if showSearch}
+			<Card class="p-6 mb-6">
+				<h3 class="text-lg font-semibold mb-4">Search Memory</h3>
+				<MemorySearch on:select={handleSearchSelect} />
+			</Card>
+		{/if}
+
+		<!-- Add Entry Form -->
+		{#if showAddForm}
+			<div class="mb-6">
+				<AddEntryForm
+					namespaces={namespaceNames.length > 0 ? namespaceNames : undefined}
+					on:submit={handleEntryAdded}
+					on:cancel={() => showAddForm = false}
+				/>
+			</div>
+		{/if}
+
 		{#if data.error}
 			<Card class="p-6 border-red-200 bg-red-50">
 				<div class="flex items-center gap-3 text-red-700">
