@@ -2,6 +2,7 @@
 	/**
 	 * Agent Detail Panel Component
 	 * GAP-3.3.1: Visual Agent Catalog
+	 * GAP-3.3.4: Agent Success Metrics Integration
 	 *
 	 * Detailed view of a selected agent with full info.
 	 */
@@ -11,6 +12,8 @@
 	import { CATEGORY_CONFIG } from '$lib/types/agents';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import AgentMetricsPanel from './AgentMetricsPanel.svelte';
+	import { getAgentMetrics } from '$lib/stores/agent-metrics';
 
 	interface Props {
 		agent: AgentCatalogEntry;
@@ -55,6 +58,9 @@
 				? 'text-blue-600 bg-blue-50'
 				: 'text-orange-600 bg-orange-50'
 	);
+
+	// Get extended metrics with history for the metrics panel
+	const extendedMetrics = $derived(getAgentMetrics(agent.id));
 </script>
 
 <div class={cn('flex flex-col h-full bg-white', className)}>
@@ -99,57 +105,12 @@
 			</span>
 		</div>
 
-		<!-- Metrics -->
-		{#if agent.metrics}
-			<div>
-				<h3 class="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
-					<Icons.BarChart3 class="w-4 h-4" />
-					Performance Metrics
-				</h3>
-				<div class="grid grid-cols-2 gap-3">
-					<!-- Success Rate -->
-					<div class="bg-gray-50 rounded-lg p-3">
-						<div class="flex items-center gap-1 text-xs text-gray-500 mb-1">
-							<Icons.TrendingUp class="w-3 h-3" />
-							Success Rate
-						</div>
-						<p class={cn(
-							'text-xl font-semibold',
-							agent.metrics.successRate >= 90 ? 'text-green-600' :
-							agent.metrics.successRate >= 80 ? 'text-blue-600' : 'text-yellow-600'
-						)}>
-							{agent.metrics.successRate}%
-						</p>
-					</div>
-
-					<!-- Usage Count -->
-					<div class="bg-gray-50 rounded-lg p-3">
-						<div class="flex items-center gap-1 text-xs text-gray-500 mb-1">
-							<Icons.Zap class="w-3 h-3" />
-							Total Uses
-						</div>
-						<p class="text-xl font-semibold text-gray-900">{agent.metrics.usageCount}</p>
-					</div>
-
-					<!-- Avg Time -->
-					<div class="bg-gray-50 rounded-lg p-3">
-						<div class="flex items-center gap-1 text-xs text-gray-500 mb-1">
-							<Icons.Clock class="w-3 h-3" />
-							Avg. Time
-						</div>
-						<p class="text-xl font-semibold text-gray-900">{formatTime(agent.metrics.avgCompletionTime)}</p>
-					</div>
-
-					<!-- Last Used -->
-					<div class="bg-gray-50 rounded-lg p-3">
-						<div class="flex items-center gap-1 text-xs text-gray-500 mb-1">
-							<Icons.Calendar class="w-3 h-3" />
-							Last Used
-						</div>
-						<p class="text-sm font-semibold text-gray-900">{formatDate(agent.metrics.lastUsed)}</p>
-					</div>
-				</div>
-			</div>
+		<!-- Metrics Panel (GAP-3.3.4) -->
+		{#if agent.metrics || extendedMetrics}
+			<AgentMetricsPanel
+				agentTypeId={agent.id}
+				metrics={extendedMetrics}
+			/>
 		{/if}
 
 		<!-- Capabilities -->

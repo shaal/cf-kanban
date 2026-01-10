@@ -2,6 +2,7 @@
 	/**
 	 * Agent Card Component
 	 * GAP-3.3.1: Visual Agent Catalog
+	 * GAP-3.3.4: Agent Success Metrics Integration
 	 *
 	 * Displays an agent type with its key info and metrics.
 	 */
@@ -10,6 +11,9 @@
 	import type { AgentCatalogEntry } from '$lib/types/agents';
 	import { CATEGORY_CONFIG } from '$lib/types/agents';
 	import Badge from '$lib/components/ui/Badge.svelte';
+	import MetricsSparkline from './MetricsSparkline.svelte';
+	import MetricsTrendBadge from './MetricsTrendBadge.svelte';
+	import { getAgentMetrics } from '$lib/stores/agent-metrics';
 
 	interface Props {
 		agent: AgentCatalogEntry;
@@ -42,6 +46,17 @@
 				? 'default'
 				: 'destructive'
 	);
+
+	// Get extended metrics with history for sparklines and trends
+	const extendedMetrics = $derived(getAgentMetrics(agent.id));
+
+	// Transform history points for sparkline
+	function toSparklineData(history: Array<{ timestamp: Date; value: number }>) {
+		return history.map((h) => ({
+			value: h.value,
+			timestamp: new Date(h.timestamp)
+		}));
+	}
 </script>
 
 <button
@@ -100,13 +115,38 @@
 		<!-- Metrics row -->
 		{#if agent.metrics && !compact}
 			<div class="mt-3 flex items-center gap-4 text-xs text-gray-500">
-				<!-- Success rate -->
-				<div class="flex items-center gap-1">
-					<Icons.TrendingUp class="w-3 h-3" />
+				<!-- Success rate with progress indicator -->
+				<div class="flex items-center gap-1.5">
+					<div class="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+						<div
+							class={cn(
+								'h-full rounded-full transition-all',
+								agent.metrics.successRate >= 85 ? 'bg-green-500' :
+								agent.metrics.successRate >= 70 ? 'bg-yellow-500' : 'bg-red-500'
+							)}
+							style="width: {agent.metrics.successRate}%"
+						></div>
+					</div>
 					<span class={agent.metrics.successRate >= 85 ? 'text-green-600' : 'text-yellow-600'}>
 						{agent.metrics.successRate}%
 					</span>
 				</div>
+
+				<!-- Sparkline and trend (if extended metrics available) -->
+				{#if extendedMetrics?.successHistory}
+					<MetricsSparkline
+						data={toSparklineData(extendedMetrics.successHistory)}
+						width={48}
+						height={16}
+						color={agent.metrics.successRate >= 85 ? '#22c55e' : '#eab308'}
+						showTrend={false}
+					/>
+					<MetricsTrendBadge
+						trend={extendedMetrics.successTrend}
+						metric="success"
+						size="sm"
+					/>
+				{/if}
 
 				<!-- Usage count -->
 				<div class="flex items-center gap-1">

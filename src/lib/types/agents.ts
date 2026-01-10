@@ -69,6 +69,157 @@ export interface AgentMetrics {
 }
 
 /**
+ * GAP-3.3.4: Extended metrics with historical trends
+ */
+export interface AgentMetricsWithHistory extends AgentMetrics {
+	/** Historical success rate data points */
+	successHistory: MetricsHistoryPoint[];
+	/** Historical completion time data points */
+	completionTimeHistory: MetricsHistoryPoint[];
+	/** Recent task outcomes (last 50) */
+	recentOutcomes: TaskOutcome[];
+	/** Trend direction for success rate */
+	successTrend: MetricsTrend;
+	/** Trend direction for completion time */
+	completionTimeTrend: MetricsTrend;
+}
+
+/**
+ * A single data point in metrics history
+ */
+export interface MetricsHistoryPoint {
+	/** Timestamp of this data point */
+	timestamp: Date;
+	/** The value at this point */
+	value: number;
+	/** Optional sample size for this period */
+	sampleSize?: number;
+}
+
+/**
+ * Outcome of a single task
+ */
+export interface TaskOutcome {
+	/** Unique ID for this outcome record */
+	id: string;
+	/** Agent type that executed the task */
+	agentTypeId: string;
+	/** Project ID where task was executed */
+	projectId: string;
+	/** Ticket ID if associated with a ticket */
+	ticketId?: string;
+	/** Task description/type */
+	taskType: string;
+	/** Whether the task succeeded */
+	success: boolean;
+	/** Completion time in ms */
+	completionTime: number;
+	/** Error message if failed */
+	errorMessage?: string;
+	/** When the task started */
+	startedAt: Date;
+	/** When the task completed */
+	completedAt: Date;
+}
+
+/**
+ * Trend direction indicator
+ */
+export type MetricsTrend = 'improving' | 'stable' | 'declining';
+
+/**
+ * Time period for metrics aggregation
+ */
+export type MetricsPeriod = '24h' | '7d' | '30d' | '90d' | 'all';
+
+/**
+ * Aggregated metrics for a time period
+ */
+export interface PeriodMetrics {
+	period: MetricsPeriod;
+	tasksCompleted: number;
+	successRate: number;
+	avgCompletionTime: number;
+	fastestCompletion: number;
+	slowestCompletion: number;
+}
+
+/**
+ * WebSocket event payloads for metrics updates
+ */
+export interface TaskOutcomePayload {
+	outcome: TaskOutcome;
+}
+
+export interface AgentMetricsUpdatePayload {
+	agentTypeId: string;
+	metrics: AgentMetrics;
+}
+
+/**
+ * Calculate trend from historical data
+ */
+export function calculateTrend(history: MetricsHistoryPoint[], isHigherBetter = true): MetricsTrend {
+	if (history.length < 2) return 'stable';
+
+	// Compare recent average to older average
+	const midpoint = Math.floor(history.length / 2);
+	const recentAvg =
+		history.slice(midpoint).reduce((sum, p) => sum + p.value, 0) / (history.length - midpoint);
+	const olderAvg = history.slice(0, midpoint).reduce((sum, p) => sum + p.value, 0) / midpoint;
+
+	const threshold = 0.05; // 5% change threshold
+	const change = (recentAvg - olderAvg) / olderAvg;
+
+	if (Math.abs(change) < threshold) return 'stable';
+
+	if (isHigherBetter) {
+		return change > 0 ? 'improving' : 'declining';
+	} else {
+		return change < 0 ? 'improving' : 'declining';
+	}
+}
+
+/**
+ * Format completion time for display
+ */
+export function formatCompletionTime(ms: number): string {
+	if (ms < 1000) return `${ms}ms`;
+	if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+	if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
+	return `${(ms / 3600000).toFixed(1)}h`;
+}
+
+/**
+ * Get trend color class
+ */
+export function getTrendColor(trend: MetricsTrend, metric: 'success' | 'time'): string {
+	if (trend === 'stable') return 'text-gray-500';
+
+	// For success rate, improving is green
+	if (metric === 'success') {
+		return trend === 'improving' ? 'text-green-600' : 'text-red-600';
+	}
+
+	// For completion time, lower is better (improving = green)
+	return trend === 'improving' ? 'text-green-600' : 'text-red-600';
+}
+
+/**
+ * Get trend icon name
+ */
+export function getTrendIcon(trend: MetricsTrend): string {
+	switch (trend) {
+		case 'improving':
+			return 'TrendingUp';
+		case 'declining':
+			return 'TrendingDown';
+		default:
+			return 'Minus';
+	}
+}
+
+/**
  * Combined agent data for display
  */
 export interface AgentCatalogEntry extends AgentTypeDefinition {
