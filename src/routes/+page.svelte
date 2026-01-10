@@ -2,6 +2,8 @@
   /**
    * TASK-019: Add Project Selector/Dashboard
    * AMENDMENT-001: Added workspace path configuration
+   * GAP-A1.1: Added workspace path validation
+   * GAP-3.1.1: Added project template selection
    *
    * Dashboard showing all projects with the ability to create new ones.
    */
@@ -9,6 +11,9 @@
   import { enhance } from '$app/forms';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
+  import PathValidationIndicator from '$lib/components/ui/PathValidationIndicator.svelte';
+  import DuplicatePathWarningModal from '$lib/components/ui/DuplicatePathWarningModal.svelte';
+  import { TemplateSelector } from '$lib/components/templates';
   import { Plus, FolderKanban, Ticket, Folder, Bot, Cpu, Brain, Zap, ChevronDown, ChevronUp } from 'lucide-svelte';
 
   export let data: PageData;
@@ -16,7 +21,96 @@
 
   let showCreateForm = false;
   let isSubmitting = false;
-  let showCapabilities = true; // Show capabilities section by default for new users
+  let showCapabilities = false; // Hide capabilities by default - template section is more prominent now
+
+  // GAP-3.1.1: Selected template state
+  let selectedTemplateId: string | null = form?.templateId ?? null;
+
+  // GAP-A1.1: Path validation state
+  let pathValidationStatus: 'idle' | 'validating' | 'valid' | 'warning' | 'error' = 'idle';
+  let pathValidationMessage = '';
+  let pathValidationResult: {
+    valid: boolean;
+    exists: boolean;
+    isDuplicate: boolean;
+    duplicateProjectId?: string;
+    duplicateProjectName?: string;
+    warnings: string[];
+    errors: string[];
+  } | null = null;
+
+  // Duplicate path warning modal
+  let showDuplicateWarning = false;
+  let pendingFormSubmit: (() => void) | null = null;
+  let workspacePathValue = '';
+
+  /**
+   * GAP-A1.1: Validate workspace path on blur
+   */
+  async function validateWorkspacePath(event: FocusEvent) {
+    const input = event.target as HTMLInputElement;
+    const path = input.value.trim();
+    workspacePathValue = path;
+
+    if (!path) {
+      pathValidationStatus = 'idle';
+      pathValidationMessage = '';
+      pathValidationResult = null;
+      return;
+    }
+
+    pathValidationStatus = 'validating';
+    pathValidationMessage = 'Validating path...';
+
+    try {
+      const response = await fetch('/api/projects/validate-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path })
+      });
+
+      const result = await response.json();
+      pathValidationResult = result;
+
+      if (result.errors && result.errors.length > 0) {
+        pathValidationStatus = 'error';
+        pathValidationMessage = result.errors[0];
+      } else if (result.warnings && result.warnings.length > 0) {
+        pathValidationStatus = 'warning';
+        pathValidationMessage = result.warnings[0];
+      } else if (result.exists && result.isDirectory) {
+        pathValidationStatus = 'valid';
+        pathValidationMessage = 'Path exists and is a valid directory';
+      } else if (result.isAbsolute) {
+        pathValidationStatus = 'valid';
+        pathValidationMessage = 'Valid absolute path format';
+      } else {
+        pathValidationStatus = 'idle';
+        pathValidationMessage = '';
+      }
+    } catch {
+      pathValidationStatus = 'error';
+      pathValidationMessage = 'Failed to validate path';
+      pathValidationResult = null;
+    }
+  }
+
+  /**
+   * GAP-A1.1: Handle duplicate path warning confirmation
+   */
+  function handleDuplicateContinue() {
+    showDuplicateWarning = false;
+    if (pendingFormSubmit) {
+      pendingFormSubmit();
+      pendingFormSubmit = null;
+    }
+  }
+
+  function handleDuplicateCancel() {
+    showDuplicateWarning = false;
+    pendingFormSubmit = null;
+    isSubmitting = false;
+  }
 </script>
 
 <svelte:head>
@@ -54,7 +148,22 @@
         <form
           method="POST"
           action="?/createProject"
-          use:enhance={() => {
+          use:enhance={({ cancel }) => {
+            // GAP-A1.1: Check for duplicate path before submitting
+            if (pathValidationResult?.isDuplicate && !showDuplicateWarning) {
+              cancel();
+              showDuplicateWarning = true;
+              pendingFormSubmit = () => {
+                // Re-submit the form after user confirms
+                const formElement = document.querySelector('form[action="?/createProject"]') as HTMLFormElement;
+                if (formElement) {
+                  isSubmitting = true;
+                  formElement.requestSubmit();
+                }
+              };
+              return;
+            }
+
             isSubmitting = true;
             return async ({ update }) => {
               isSubmitting = false;
@@ -64,6 +173,7 @@
           class="space-y-5"
         >
           <!-- AMENDMENT-001: Workspace Path (First and Required) -->
+          <!-- GAP-A1.1: Added path validation on blur -->
           <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <label for="workspace-path" class="block text-sm font-medium text-blue-900 mb-1">
               <span class="flex items-center gap-2">
@@ -81,14 +191,34 @@
               required
               value={form?.workspacePath ?? ''}
               disabled={isSubmitting}
-              class="w-full px-3 py-2 border border-blue-300 rounded-md text-sm font-mono
+              class="w-full px-3 py-2 border rounded-md text-sm font-mono
                      focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     disabled:opacity-50 bg-white"
+                     disabled:opacity-50 bg-white
+                     {pathValidationStatus === 'error' ? 'border-red-400' :
+                      pathValidationStatus === 'warning' ? 'border-amber-400' :
+                      pathValidationStatus === 'valid' ? 'border-green-400' :
+                      'border-blue-300'}"
               placeholder="/Users/you/code/my-project"
+              on:blur={validateWorkspacePath}
+              on:input={() => {
+                // Reset validation when user starts typing again
+                if (pathValidationStatus !== 'idle') {
+                  pathValidationStatus = 'idle';
+                  pathValidationMessage = '';
+                }
+              }}
             />
-            <p class="text-xs text-blue-600 mt-1">
-              Example: /Users/dev/my-app or /home/dev/projects/api
-            </p>
+            <!-- GAP-A1.1: Path validation indicator -->
+            <PathValidationIndicator
+              status={pathValidationStatus}
+              message={pathValidationMessage}
+              class="mt-2"
+            />
+            {#if pathValidationStatus === 'idle'}
+              <p class="text-xs text-blue-600 mt-1">
+                Example: /Users/dev/my-app or /home/dev/projects/api
+              </p>
+            {/if}
           </div>
 
           <div>
@@ -125,6 +255,17 @@
               placeholder="A brief description of your project..."
             ></textarea>
           </div>
+
+          <!-- GAP-3.1.1: Template Selection -->
+          {#if data.templates && data.templates.length > 0}
+            <div class="p-4 border border-gray-200 rounded-lg bg-gray-50">
+              <TemplateSelector
+                templates={data.templates}
+                templatesByCategory={data.templatesByCategory}
+                bind:selectedTemplateId
+              />
+            </div>
+          {/if}
 
           <!-- AMENDMENT-001: Claude Flow Capabilities Overview -->
           <div class="border border-gray-200 rounded-lg overflow-hidden">
@@ -257,6 +398,14 @@
                     <Ticket class="w-3.5 h-3.5" />
                     <span>{project._count.tickets} ticket{project._count.tickets !== 1 ? 's' : ''}</span>
                   </div>
+                  <!-- GAP-3.1.1: Display template badge if assigned -->
+                  {#if project.template}
+                    <div class="flex items-center gap-1 mt-1">
+                      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">
+                        {project.template.name}
+                      </span>
+                    </div>
+                  {/if}
                 </div>
               </div>
             </Card>
@@ -279,6 +428,16 @@
     {/if}
   </div>
 </main>
+
+<!-- GAP-A1.1: Duplicate path warning modal -->
+<DuplicatePathWarningModal
+  open={showDuplicateWarning}
+  duplicateProjectName={pathValidationResult?.duplicateProjectName ?? ''}
+  duplicateProjectId={pathValidationResult?.duplicateProjectId ?? ''}
+  workspacePath={workspacePathValue}
+  onContinue={handleDuplicateContinue}
+  onCancel={handleDuplicateCancel}
+/>
 
 <style>
   .line-clamp-2 {

@@ -3,6 +3,7 @@
    * TicketQuestions Component
    *
    * TASK-057: Create Question/Answer UI on Ticket Cards
+   * GAP-3.2.6: Feedback Interaction UI Enhancement
    *
    * Displays agent questions and allows users to provide answers.
    * This is a core component of the swim-lane feedback loop.
@@ -12,39 +13,20 @@
    * - Different input types for each question type (TEXT, CHOICE, MULTISELECT, CONFIRM, CODE)
    * - Real-time answer submission
    * - "Ready to Resume" button when all required questions are answered
+   * - "Ask Claude to Clarify" button for requesting clarification (GAP-3.2.6)
    */
   import { createEventDispatcher } from 'svelte';
   import { Button, Input } from '$lib/components/ui';
   import { cn } from '$lib/utils';
-
-  /**
-   * Question type definitions matching the Prisma schema
-   */
-  type QuestionType = 'TEXT' | 'CHOICE' | 'MULTISELECT' | 'CONFIRM' | 'CODE';
-
-  /**
-   * Question interface matching the database model
-   */
-  interface Question {
-    id: string;
-    question: string;
-    type: QuestionType;
-    options: string[];
-    required: boolean;
-    answer: string | null;
-    answered: boolean;
-    context: string | null;
-    codeLanguage: string | null;
-    defaultValue: string | null;
-    agentId: string;
-  }
+  import { MessageCircleQuestion } from 'lucide-svelte';
+  import type { TicketQuestion } from '$lib/types';
 
   /**
    * Component props
    */
   interface Props {
     ticketId: string;
-    questions: Question[];
+    questions: TicketQuestion[];
     class?: string;
   }
 
@@ -53,8 +35,12 @@
   const dispatch = createEventDispatcher<{
     answered: { questionId: string; allAnswered: boolean };
     readyToResume: void;
+    clarify: { questionId: string };
     error: { message: string };
   }>();
+
+  // GAP-3.2.6: Track which questions have pending clarification requests
+  let clarifyingQuestions: Record<string, boolean> = $state({});
 
   // Local state for answers and submission status
   let answers: Record<string, string> = $state({});
@@ -87,7 +73,7 @@
   /**
    * Submit an answer for a question
    */
-  async function submitAnswer(question: Question) {
+  async function submitAnswer(question: TicketQuestion) {
     let answer: string | undefined;
 
     if (question.type === 'MULTISELECT') {
@@ -166,7 +152,7 @@
   /**
    * Handle choice selection (auto-submit)
    */
-  async function selectChoice(question: Question, choice: string) {
+  async function selectChoice(question: TicketQuestion, choice: string) {
     answers[question.id] = choice;
     await submitAnswer(question);
   }
@@ -174,7 +160,7 @@
   /**
    * Handle confirmation (auto-submit)
    */
-  async function confirm(question: Question, value: boolean) {
+  async function confirm(question: TicketQuestion, value: boolean) {
     answers[question.id] = value ? 'Yes' : 'No';
     await submitAnswer(question);
   }
@@ -189,10 +175,44 @@
   /**
    * Handle keyboard submit for text inputs
    */
-  function handleKeydown(event: KeyboardEvent, question: Question) {
+  function handleKeydown(event: KeyboardEvent, question: TicketQuestion) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       submitAnswer(question);
+    }
+  }
+
+  /**
+   * GAP-3.2.6: Request clarification on a question from Claude
+   */
+  async function requestClarification(question: TicketQuestion) {
+    clarifyingQuestions[question.id] = true;
+
+    try {
+      const response = await fetch(
+        `/api/tickets/${ticketId}/questions/${question.id}/clarify`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            questionId: question.id,
+            originalQuestion: question.question,
+            context: question.context
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to request clarification');
+      }
+
+      dispatch('clarify', { questionId: question.id });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to request clarification';
+      dispatch('error', { message });
+    } finally {
+      clarifyingQuestions[question.id] = false;
     }
   }
 </script>
@@ -235,11 +255,12 @@
       {:else if question.type === 'TEXT'}
         <div class="flex flex-col gap-2">
           <div class="flex gap-2">
-            <Input
+            <input
+              type="text"
               bind:value={answers[question.id]}
               placeholder="Type your answer..."
-              class="flex-1"
-              onkeydown={(e) => handleKeydown(e, question)}
+              class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onkeydown={(e: KeyboardEvent) => handleKeydown(e, question)}
             />
             <Button
               size="sm"
@@ -345,7 +366,7 @@
               'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent',
               'bg-gray-50'
             )}
-            onkeydown={(e) => {
+            onkeydown={(e: KeyboardEvent) => {
               // Allow Tab for indentation in code
               if (e.key === 'Tab') {
                 e.preventDefault();
@@ -379,6 +400,24 @@
       <!-- Required indicator -->
       {#if question.required && !question.answered}
         <p class="text-xs text-gray-400 mt-2">* Required</p>
+      {/if}
+
+      <!-- GAP-3.2.6: Ask Claude to Clarify button -->
+      {#if !question.answered}
+        <div class="mt-3 pt-3 border-t border-gray-100">
+          <button
+            class={cn(
+              'inline-flex items-center gap-1.5 text-xs text-purple-600 hover:text-purple-700',
+              'hover:bg-purple-50 px-2 py-1 rounded-md transition-colors',
+              'disabled:opacity-50 disabled:cursor-not-allowed'
+            )}
+            onclick={() => requestClarification(question)}
+            disabled={clarifyingQuestions[question.id]}
+          >
+            <MessageCircleQuestion class="w-3.5 h-3.5" />
+            {clarifyingQuestions[question.id] ? 'Requesting...' : 'Ask Claude to Clarify'}
+          </button>
+        </div>
       {/if}
     </div>
   {/each}

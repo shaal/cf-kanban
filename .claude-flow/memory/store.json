@@ -1,0 +1,80 @@
+{
+  "entries": {
+    "frontend-analysis-gap-3.1.5-3.4.1": {
+      "key": "frontend-analysis-gap-3.1.5-3.4.1",
+      "value": {
+        "project_type": "SvelteKit",
+        "styling": "Tailwind CSS",
+        "component_patterns": {
+          "ui_base": "src/lib/components/ui - Card, Button, Badge, Input, Toast, etc.",
+          "viz": "src/lib/components/viz - D3.js charts with ForceGraph, LineChart, BarChart, AreaChart",
+          "neural": "src/lib/components/neural - TrainingLossChart, TrainingConfig, ExpertUtilization, EWCStatus",
+          "swarm": "src/lib/components/swarm - SwarmVisualization with D3 force graph, real-time updates"
+        },
+        "existing_swarm_types": {
+          "SwarmTopology": "hierarchical | mesh | hybrid | ring | star | single",
+          "SwarmNode": "ForceNode extended with agentId, agentType, status, role, health, taskCount",
+          "SwarmGraphData": "swarmId, topology, nodes, links, status, health"
+        },
+        "existing_admin_types": {
+          "ClaudeFlowSettings": "enabled, apiEndpoint, maxAgents, topology, enableNeuralLearning, enableHNSW, memoryBackend"
+        },
+        "styling_conventions": {
+          "form_controls": "h-10 px-3 rounded-md border border-gray-300",
+          "cards": "rounded-lg border border-gray-200 bg-white shadow-sm",
+          "buttons": "inline-flex items-center justify-center rounded-md text-sm font-medium",
+          "labels": "block text-sm font-medium text-gray-700 mb-2",
+          "descriptions": "mt-1 text-sm text-gray-500"
+        },
+        "state_management": "Svelte 5 runes ($state, $derived, $effect)",
+        "icon_library": "lucide-svelte"
+      },
+      "metadata": {},
+      "storedAt": "2026-01-10T06:54:25.195Z",
+      "accessCount": 0,
+      "lastAccessed": "2026-01-10T06:54:25.195Z"
+    },
+    "gap-3.1.5-3.4.1-implementation": {
+      "key": "gap-3.1.5-3.4.1-implementation",
+      "value": {
+        "gap_3_1_5": {
+          "component": "SwarmTopologyConfig.svelte",
+          "location": "src/lib/components/swarm/",
+          "features": [
+            "Topology selection (hierarchical, mesh, hybrid, ring, star)",
+            "Interactive SVG topology preview with animated visualization",
+            "Max agents slider (2-25)",
+            "Advanced settings: coordinator pull, consensus enable/toggle, consensus strategy selection",
+            "Pros/cons display for each topology",
+            "Recommended badges for hierarchical-mesh and hierarchical",
+            "Save/reset configuration callbacks"
+          ],
+          "exports_from": "src/lib/components/swarm/index.ts"
+        },
+        "gap_3_4_1": {
+          "component": "TrainingProgressDashboard.svelte",
+          "location": "src/lib/components/neural/",
+          "features": [
+            "Real-time training status with progress bar",
+            "Loss/accuracy chart with dual y-axis",
+            "Intelligence system status grid (SONA, MoE, HNSW, EWC++)",
+            "SONA performance metrics with adaptation speed",
+            "EWC++ consolidation metrics",
+            "Expert utilization bars for MoE",
+            "Training history table",
+            "Pause/resume/refresh controls"
+          ],
+          "exports_from": "src/lib/components/neural/index.ts"
+        },
+        "styling": "Tailwind CSS with consistent card-based layout",
+        "state_management": "Svelte 5 runes ($state, $derived)",
+        "chart_rendering": "SVG-based without D3 dependency for lightweight charts"
+      },
+      "metadata": {},
+      "storedAt": "2026-01-10T06:57:13.990Z",
+      "accessCount": 0,
+      "lastAccessed": "2026-01-10T06:57:13.990Z"
+    }
+  },
+  "version": "3.0.0"
+}

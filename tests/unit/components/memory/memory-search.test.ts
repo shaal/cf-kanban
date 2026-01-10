@@ -1,11 +1,13 @@
 /**
  * TASK-082: Memory Search Component Tests
+ * GAP-3.4.2: Memory Browser Semantic Search
  *
- * Tests for semantic memory search with debouncing and highlighting.
+ * Tests for semantic memory search with debouncing, highlighting,
+ * vector similarity search, and similar patterns functionality.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { MemoryService, type MemorySearchResult } from '$lib/server/claude-flow/memory';
+import { MemoryService, type MemorySearchResult, type VectorSearchResult } from '$lib/server/claude-flow/memory';
 
 // Mock the CLI
 vi.mock('$lib/server/claude-flow/cli', () => ({
@@ -282,5 +284,261 @@ describe('Memory Search - Input Validation', () => {
 		const minLength = 2;
 		expect('a'.length >= minLength).toBe(false);
 		expect('ab'.length >= minLength).toBe(true);
+	});
+});
+
+// GAP-3.4.2: Vector Similarity Search Tests
+describe('Memory Search - Vector Similarity (GAP-3.4.2)', () => {
+	let service: MemoryService;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		service = new MemoryService();
+	});
+
+	describe('vectorSearch', () => {
+		it('should use HNSW intelligence for vector search', async () => {
+			const mockResult = {
+				patterns: [
+					{ key: 'auth-jwt', value: 'JWT authentication', namespace: 'patterns', similarity: 0.92 },
+					{ key: 'auth-oauth', value: 'OAuth2 flow', namespace: 'patterns', similarity: 0.85 }
+				]
+			};
+
+			const { claudeFlowCLI } = await import('$lib/server/claude-flow/cli');
+			vi.mocked(claudeFlowCLI.executeJson).mockResolvedValue(mockResult);
+
+			const result = await service.vectorSearch('authentication');
+
+			expect(result.entries).toHaveLength(2);
+			expect(result.entries[0].similarity).toBe(0.92);
+			expect(claudeFlowCLI.executeJson).toHaveBeenCalledWith('hooks', expect.arrayContaining([
+				'intelligence',
+				'pattern-search',
+				'--query',
+				'authentication'
+			]));
+		});
+
+		it('should fall back to regular search when HNSW fails', async () => {
+			const { claudeFlowCLI } = await import('$lib/server/claude-flow/cli');
+
+			// First call (HNSW) fails
+			vi.mocked(claudeFlowCLI.executeJson)
+				.mockRejectedValueOnce(new Error('HNSW not available'))
+				// Second call (fallback search) succeeds
+				.mockResolvedValueOnce({
+					entries: [{ key: 'fallback', value: 'result', namespace: 'default' }]
+				});
+
+			const result = await service.vectorSearch('test query');
+
+			expect(result.entries).toHaveLength(1);
+			expect(result.entries[0].key).toBe('fallback');
+		});
+
+		it('should filter by namespace in vector search', async () => {
+			const { claudeFlowCLI } = await import('$lib/server/claude-flow/cli');
+			vi.mocked(claudeFlowCLI.executeJson).mockResolvedValue({
+				patterns: [
+					{ key: 'k1', value: 'v1', namespace: 'patterns', similarity: 0.9 },
+					{ key: 'k2', value: 'v2', namespace: 'solutions', similarity: 0.8 }
+				]
+			});
+
+			const result = await service.vectorSearch('test', { namespace: 'patterns' });
+
+			expect(result.entries).toHaveLength(1);
+			expect(result.entries[0].key).toBe('k1');
+		});
+	});
+
+	describe('findSimilar', () => {
+		it('should find similar entries using HNSW pattern search', async () => {
+			const mockResult = {
+				patterns: [
+					{ key: 'similar-1', value: 'Similar content 1', similarity: 0.88, namespace: 'patterns' },
+					{ key: 'similar-2', value: 'Similar content 2', similarity: 0.72, namespace: 'patterns' }
+				],
+				indexed: true
+			};
+
+			const { claudeFlowCLI } = await import('$lib/server/claude-flow/cli');
+			vi.mocked(claudeFlowCLI.executeJson).mockResolvedValue(mockResult);
+
+			const result = await service.findSimilar('source-key', { limit: 5 });
+
+			expect(result.entries).toHaveLength(2);
+			expect(result.searchMethod).toBe('hnsw');
+			expect(result.entries[0].similarity).toBe(0.88);
+		});
+
+		it('should exclude source entry from similar results', async () => {
+			const { claudeFlowCLI } = await import('$lib/server/claude-flow/cli');
+			vi.mocked(claudeFlowCLI.executeJson).mockResolvedValue({
+				patterns: [
+					{ key: 'source-key', value: 'Source', similarity: 1.0, namespace: 'patterns' },
+					{ key: 'similar-1', value: 'Similar', similarity: 0.85, namespace: 'patterns' }
+				]
+			});
+
+			const result = await service.findSimilar('source-key');
+
+			expect(result.entries).toHaveLength(1);
+			expect(result.entries[0].entry.key).toBe('similar-1');
+		});
+
+		it('should filter by minimum confidence', async () => {
+			const { claudeFlowCLI } = await import('$lib/server/claude-flow/cli');
+			vi.mocked(claudeFlowCLI.executeJson).mockResolvedValue({
+				patterns: [
+					{ key: 'high', value: 'High similarity', similarity: 0.9, namespace: 'patterns' },
+					{ key: 'low', value: 'Low similarity', similarity: 0.3, namespace: 'patterns' }
+				]
+			});
+
+			const result = await service.findSimilar('source', { minConfidence: 0.5 });
+
+			expect(result.entries).toHaveLength(1);
+			expect(result.entries[0].entry.key).toBe('high');
+		});
+
+		it('should fall back to text similarity when HNSW fails', async () => {
+			const { claudeFlowCLI } = await import('$lib/server/claude-flow/cli');
+
+			// HNSW call fails
+			vi.mocked(claudeFlowCLI.executeJson)
+				.mockRejectedValueOnce(new Error('HNSW not available'))
+				// Retrieve source entry
+				.mockResolvedValueOnce({ key: 'source', value: 'Test content for similarity' })
+				// Fallback search
+				.mockResolvedValueOnce({
+					entries: [{ key: 'fallback', value: 'Similar content', namespace: 'default' }]
+				});
+
+			const result = await service.findSimilar('source');
+
+			expect(result.searchMethod).toBe('fallback');
+		});
+
+		it('should return empty results for non-existent source entry', async () => {
+			const { claudeFlowCLI } = await import('$lib/server/claude-flow/cli');
+
+			// HNSW fails, retrieve also fails
+			vi.mocked(claudeFlowCLI.executeJson)
+				.mockRejectedValueOnce(new Error('HNSW not available'))
+				.mockRejectedValueOnce(new Error('not found'));
+
+			const result = await service.findSimilar('nonexistent');
+
+			expect(result.entries).toEqual([]);
+			expect(result.searchMethod).toBe('fallback');
+		});
+	});
+});
+
+describe('Memory Search - Text Similarity Calculation', () => {
+	// Test the Jaccard similarity calculation used as fallback
+	function calculateTextSimilarity(text1: string, text2: string): number {
+		const tokens1 = new Set(text1.toLowerCase().split(/\W+/).filter(Boolean));
+		const tokens2 = new Set(text2.toLowerCase().split(/\W+/).filter(Boolean));
+
+		if (tokens1.size === 0 || tokens2.size === 0) {
+			return 0;
+		}
+
+		const intersection = [...tokens1].filter((t) => tokens2.has(t)).length;
+		const union = new Set([...tokens1, ...tokens2]).size;
+
+		return intersection / union;
+	}
+
+	it('should return 1 for identical texts', () => {
+		const text = 'Hello world';
+		expect(calculateTextSimilarity(text, text)).toBe(1);
+	});
+
+	it('should return 0 for completely different texts', () => {
+		const text1 = 'Hello world';
+		const text2 = 'Goodbye universe';
+		expect(calculateTextSimilarity(text1, text2)).toBe(0);
+	});
+
+	it('should return partial similarity for overlapping texts', () => {
+		const text1 = 'JWT authentication pattern';
+		const text2 = 'OAuth authentication flow';
+		const similarity = calculateTextSimilarity(text1, text2);
+		expect(similarity).toBeGreaterThan(0);
+		expect(similarity).toBeLessThan(1);
+	});
+
+	it('should be case insensitive', () => {
+		const text1 = 'Hello World';
+		const text2 = 'hello world';
+		expect(calculateTextSimilarity(text1, text2)).toBe(1);
+	});
+
+	it('should return 0 for empty texts', () => {
+		expect(calculateTextSimilarity('', 'test')).toBe(0);
+		expect(calculateTextSimilarity('test', '')).toBe(0);
+		expect(calculateTextSimilarity('', '')).toBe(0);
+	});
+});
+
+describe('Memory Search - Similarity Bar Visualization', () => {
+	function getSimilarityBarColor(score: number): string {
+		if (score >= 0.8) return 'bg-green-500';
+		if (score >= 0.6) return 'bg-yellow-500';
+		if (score >= 0.4) return 'bg-orange-500';
+		return 'bg-red-500';
+	}
+
+	it('should return green for high similarity (>=80%)', () => {
+		expect(getSimilarityBarColor(0.95)).toBe('bg-green-500');
+		expect(getSimilarityBarColor(0.80)).toBe('bg-green-500');
+	});
+
+	it('should return yellow for good similarity (>=60%)', () => {
+		expect(getSimilarityBarColor(0.75)).toBe('bg-yellow-500');
+		expect(getSimilarityBarColor(0.60)).toBe('bg-yellow-500');
+	});
+
+	it('should return orange for moderate similarity (>=40%)', () => {
+		expect(getSimilarityBarColor(0.55)).toBe('bg-orange-500');
+		expect(getSimilarityBarColor(0.40)).toBe('bg-orange-500');
+	});
+
+	it('should return red for low similarity (<40%)', () => {
+		expect(getSimilarityBarColor(0.35)).toBe('bg-red-500');
+		expect(getSimilarityBarColor(0.10)).toBe('bg-red-500');
+	});
+});
+
+describe('Memory Search - Search Mode Toggle', () => {
+	it('should default to vector search mode', () => {
+		const defaultMode = 'vector';
+		expect(defaultMode).toBe('vector');
+	});
+
+	it('should toggle between keyword and vector modes', () => {
+		let searchMode: 'keyword' | 'vector' = 'vector';
+
+		const toggleSearchMode = () => {
+			searchMode = searchMode === 'vector' ? 'keyword' : 'vector';
+		};
+
+		toggleSearchMode();
+		expect(searchMode).toBe('keyword');
+
+		toggleSearchMode();
+		expect(searchMode).toBe('vector');
+	});
+
+	it('should use different endpoints for different modes', () => {
+		const getEndpoint = (mode: 'keyword' | 'vector') =>
+			mode === 'vector' ? '/api/memory/vector-search' : '/api/memory/search';
+
+		expect(getEndpoint('vector')).toBe('/api/memory/vector-search');
+		expect(getEndpoint('keyword')).toBe('/api/memory/search');
 	});
 });

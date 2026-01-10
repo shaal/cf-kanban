@@ -3,16 +3,20 @@
 	 * Project Kanban Board Page
 	 *
 	 * TASK-034: Connect Kanban board to WebSocket
+	 * GAP-3.2.6: Feedback Interaction UI Enhancement
 	 *
 	 * Features:
 	 * - Real-time ticket updates via WebSocket
 	 * - Optimistic UI updates with rollback
 	 * - Connection status indicator
 	 * - Project room management (join/leave)
+	 * - Ticket detail modal for viewing/answering questions (GAP-3.2.6)
 	 */
 	import { onMount, onDestroy } from 'svelte';
 	import type { PageData } from './$types';
+	import type { Ticket } from '$lib/types';
 	import KanbanBoard from '$lib/components/kanban/KanbanBoard.svelte';
+	import TicketDetailModal from '$lib/components/kanban/TicketDetailModal.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { ConnectionIndicator } from '$lib/components/ui';
@@ -53,6 +57,10 @@
 	let showCreateModal = false;
 	let isTransitioning = false;
 	let transitionError = '';
+
+	// GAP-3.2.6: Ticket detail modal state
+	let showTicketDetail = false;
+	let selectedTicket: Ticket | null = null;
 
 	// Unsubscribe functions for socket events
 	let unsubscribers: (() => void)[] = [];
@@ -200,6 +208,37 @@
 			await invalidateAll();
 		}
 	}
+
+	/**
+	 * GAP-3.2.6: Handle ticket click to open detail modal
+	 */
+	function handleTicketClick(event: CustomEvent<{ ticket: Ticket }>) {
+		selectedTicket = event.detail.ticket;
+		showTicketDetail = true;
+	}
+
+	/**
+	 * GAP-3.2.6: Handle ticket detail modal close
+	 */
+	function handleTicketDetailClose() {
+		showTicketDetail = false;
+		selectedTicket = null;
+	}
+
+	/**
+	 * GAP-3.2.6: Handle ticket resume from detail modal
+	 */
+	async function handleTicketResume() {
+		await invalidateAll();
+		handleTicketDetailClose();
+	}
+
+	/**
+	 * GAP-3.2.6: Handle ticket update from detail modal
+	 */
+	async function handleTicketUpdate() {
+		await invalidateAll();
+	}
 </script>
 
 <svelte:head>
@@ -247,8 +286,18 @@
 		projectId={data.project.id}
 		tickets={data.tickets}
 		on:ticketMove={handleTicketMove}
+		on:ticketClick={handleTicketClick}
 	/>
 </main>
+
+<!-- GAP-3.2.6: Ticket detail modal -->
+<TicketDetailModal
+	bind:open={showTicketDetail}
+	ticket={selectedTicket}
+	on:close={handleTicketDetailClose}
+	on:resume={handleTicketResume}
+	on:updated={handleTicketUpdate}
+/>
 
 {#if showCreateModal}
 	<div

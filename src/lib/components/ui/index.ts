@@ -4,6 +4,7 @@
  * TASK-011: Create Base UI Components
  * TASK-034: Add ConnectionIndicator component
  * TASK-118: Add Tooltip, ErrorMessage, Toast components
+ * GAP-A1.1: Add PathValidationIndicator and DuplicatePathWarningModal
  */
 
 export { default as Button } from './Button.svelte';
@@ -15,3 +16,5 @@ export { default as ConnectionIndicator } from './ConnectionIndicator.svelte';
 export { default as Tooltip } from './Tooltip.svelte';
 export { default as ErrorMessage } from './ErrorMessage.svelte';
 export { default as Toast } from './Toast.svelte';
+export { default as PathValidationIndicator } from './PathValidationIndicator.svelte';
+export { default as DuplicatePathWarningModal } from './DuplicatePathWarningModal.svelte';

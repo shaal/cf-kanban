@@ -106,3 +106,25 @@ export {
   type TicketProgressState,
   type StageStatus
 } from './progress';
+
+// GAP-UX.1: AI Status store for ticket AI status indicators
+export {
+  ticketAIStatuses,
+  getTicketAIStatus,
+  createTicketAIStatusStore,
+  setTicketAIStatus,
+  updateTicketConfidence,
+  updateTicketKnowledge,
+  updateTicketAIProcessingStatus,
+  assignAIAgent,
+  setAICurrentTask,
+  clearTicketAIStatus,
+  clearAllAIStatuses,
+  initializeAIStatuses,
+  initializeMockAIStatuses,
+  createAIStatusEventHandlers,
+  type TicketAIStatus,
+  type AIStatusUpdatePayload,
+  type AIConfidenceUpdatePayload,
+  type AIKnowledgeUpdatePayload
+} from './ai-status';

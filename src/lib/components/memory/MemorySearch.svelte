@@ -1,19 +1,21 @@
 <script lang="ts">
 	/**
 	 * TASK-082: Memory Search Component
+	 * GAP-3.4.2: Memory Browser Semantic Search
 	 *
 	 * Semantic search for memory entries with:
 	 * - Real-time search with 300ms debounce
 	 * - Similarity score display (0-1)
 	 * - Term highlighting in results
 	 * - Namespace filtering
+	 * - Toggle between keyword and vector (HNSW) search modes
 	 */
 	import { createEventDispatcher } from 'svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
-	import { Search, Loader2, X, Key, AlertCircle } from 'lucide-svelte';
+	import { Search, Loader2, X, Key, AlertCircle, Zap, Type } from 'lucide-svelte';
 
 	interface MemoryEntry {
 		key: string;
@@ -28,18 +30,20 @@
 		placeholder?: string;
 		minQueryLength?: number;
 		debounceMs?: number;
+		defaultSearchMode?: 'keyword' | 'vector';
 	}
 
 	let {
 		namespace = undefined,
 		placeholder = 'Search memory entries...',
 		minQueryLength = 2,
-		debounceMs = 300
+		debounceMs = 300,
+		defaultSearchMode = 'vector'
 	}: Props = $props();
 
 	const dispatch = createEventDispatcher<{
 		select: MemoryEntry;
-		search: { query: string; results: MemoryEntry[] };
+		search: { query: string; results: MemoryEntry[]; mode: 'keyword' | 'vector' };
 	}>();
 
 	let query = $state('');
@@ -47,6 +51,8 @@
 	let isSearching = $state(false);
 	let error = $state<string | null>(null);
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let searchMode = $state<'keyword' | 'vector'>(defaultSearchMode);
+	let isVectorSearch = $state(false); // Tracks if last search used vector similarity
 
 	// Debounced search
 	$effect(() => {
@@ -76,7 +82,12 @@
 			const params = new URLSearchParams({ query: searchQuery });
 			if (namespace) params.set('namespace', namespace);
 
-			const response = await fetch(`/api/memory/search?${params}`);
+			// Use vector search endpoint when in vector mode
+			const endpoint = searchMode === 'vector'
+				? '/api/memory/vector-search'
+				: '/api/memory/search';
+
+			const response = await fetch(`${endpoint}?${params}`);
 
 			if (!response.ok) {
 				const data = await response.json();
@@ -85,12 +96,22 @@
 
 			const data = await response.json();
 			results = data.entries || [];
-			dispatch('search', { query: searchQuery, results });
+			isVectorSearch = data.isVectorSearch ?? (searchMode === 'vector');
+			dispatch('search', { query: searchQuery, results, mode: searchMode });
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Search failed';
 			results = [];
+			isVectorSearch = false;
 		} finally {
 			isSearching = false;
+		}
+	}
+
+	function toggleSearchMode() {
+		searchMode = searchMode === 'vector' ? 'keyword' : 'vector';
+		// Re-run search if we have a query
+		if (query.trim().length >= minQueryLength) {
+			performSearch(query.trim());
 		}
 	}
 
@@ -124,9 +145,18 @@
 
 	function getSimilarityClass(score?: number): string {
 		if (score === undefined) return 'text-gray-400';
-		if (score >= 0.9) return 'text-green-600 bg-green-50';
-		if (score >= 0.7) return 'text-yellow-600 bg-yellow-50';
+		if (score >= 0.8) return 'text-green-600 bg-green-50';
+		if (score >= 0.6) return 'text-yellow-600 bg-yellow-50';
+		if (score >= 0.4) return 'text-orange-600 bg-orange-50';
 		return 'text-red-600 bg-red-50';
+	}
+
+	function getSimilarityBarColor(score?: number): string {
+		if (score === undefined) return 'bg-gray-300';
+		if (score >= 0.8) return 'bg-green-500';
+		if (score >= 0.6) return 'bg-yellow-500';
+		if (score >= 0.4) return 'bg-orange-500';
+		return 'bg-red-500';
 	}
 
 	function truncateValue(value: string, maxLength = 150): string {
@@ -136,39 +166,66 @@
 </script>
 
 <div class="space-y-4">
-	<!-- Search Input -->
-	<div class="relative">
-		<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-			{#if isSearching}
-				<Loader2 class="w-5 h-5 text-gray-400 animate-spin" />
-			{:else}
-				<Search class="w-5 h-5 text-gray-400" />
+	<!-- Search Input with Mode Toggle -->
+	<div class="flex gap-2">
+		<div class="relative flex-1">
+			<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+				{#if isSearching}
+					<Loader2 class="w-5 h-5 text-gray-400 animate-spin" />
+				{:else}
+					<Search class="w-5 h-5 text-gray-400" />
+				{/if}
+			</div>
+			<Input
+				type="search"
+				bind:value={query}
+				{placeholder}
+				class="pl-10 pr-10"
+			/>
+			{#if query}
+				<button
+					class="absolute inset-y-0 right-0 pr-3 flex items-center"
+					onclick={clearSearch}
+					aria-label="Clear search"
+				>
+					<X class="w-5 h-5 text-gray-400 hover:text-gray-600" />
+				</button>
 			{/if}
 		</div>
-		<Input
-			type="search"
-			bind:value={query}
-			{placeholder}
-			class="pl-10 pr-10"
-		/>
-		{#if query}
-			<button
-				class="absolute inset-y-0 right-0 pr-3 flex items-center"
-				onclick={clearSearch}
-				aria-label="Clear search"
+		<!-- Search Mode Toggle -->
+		<div title={searchMode === 'vector' ? 'Using vector similarity (HNSW)' : 'Using keyword search'}>
+			<Button
+				variant="outline"
+				size="sm"
+				onclick={toggleSearchMode}
+				class="shrink-0"
 			>
-				<X class="w-5 h-5 text-gray-400 hover:text-gray-600" />
-			</button>
-		{/if}
+				{#if searchMode === 'vector'}
+					<Zap class="w-4 h-4 mr-1 text-yellow-500" />
+					Vector
+				{:else}
+					<Type class="w-4 h-4 mr-1" />
+					Keyword
+				{/if}
+			</Button>
+		</div>
 	</div>
 
-	<!-- Namespace Filter Badge -->
-	{#if namespace}
+	<!-- Search Mode Info and Namespace Filter -->
+	<div class="flex items-center justify-between">
 		<div class="flex items-center gap-2">
-			<span class="text-sm text-gray-500">Searching in:</span>
-			<Badge variant="secondary">{namespace}</Badge>
+			{#if namespace}
+				<span class="text-sm text-gray-500">Searching in:</span>
+				<Badge variant="secondary">{namespace}</Badge>
+			{/if}
 		</div>
-	{/if}
+		{#if results.length > 0 && isVectorSearch}
+			<Badge variant="outline" class="text-xs flex items-center gap-1">
+				<Zap class="w-3 h-3 text-yellow-500" />
+				HNSW Indexed
+			</Badge>
+		{/if}
+	</div>
 
 	<!-- Error Message -->
 	{#if error}
@@ -229,6 +286,18 @@
 											{#each entry.tags.slice(0, 4) as tag}
 												<Badge variant="outline" class="text-xs">{tag}</Badge>
 											{/each}
+										</div>
+									{/if}
+									<!-- Similarity bar visualization -->
+									{#if entry.similarity !== undefined && isVectorSearch}
+										<div class="mt-2 flex items-center gap-2">
+											<div class="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+												<div
+													class={`h-full ${getSimilarityBarColor(entry.similarity)} transition-all`}
+													style="width: {entry.similarity * 100}%"
+												></div>
+											</div>
+											<span class="text-xs text-gray-400 shrink-0">similarity</span>
 										</div>
 									{/if}
 								</div>

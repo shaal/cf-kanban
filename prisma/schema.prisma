@@ -16,6 +16,10 @@ model Project {
   /// This is the local filesystem folder for the project's codebase
   workspacePath String?
 
+  /// GAP-3.1.1: Project template reference for pre-configured swarm settings
+  templateId  String?
+  template    ProjectTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
   settings    Json            @default("{}")
   isArchived  Boolean         @default(false)
   tickets     Ticket[]
@@ -24,6 +28,50 @@ model Project {
   updatedAt   DateTime        @updatedAt
 
   @@index([workspacePath])
+  @@index([templateId])
+}
+
+/// GAP-3.1.1: Pre-configured swarm setups for common use cases
+/// Templates define agent configurations and swarm topologies for different project types
+model ProjectTemplate {
+  id          String    @id @default(cuid())
+
+  /// Template identifier (e.g., 'web-app', 'security-audit')
+  slug        String    @unique
+
+  /// Display name for the template
+  name        String
+
+  /// Description of what this template is best suited for
+  description String
+
+  /// Category for grouping templates (e.g., 'development', 'security', 'documentation')
+  category    String
+
+  /// Icon identifier for UI display
+  icon        String    @default("bot")
+
+  /// Swarm configuration as JSON
+  /// Contains: agents[], topology, maxAgents, hiveMind, options
+  swarmConfig Json
+
+  /// Whether this is a built-in system template
+  isSystem    Boolean   @default(true)
+
+  /// Whether this template is active and selectable
+  isActive    Boolean   @default(true)
+
+  /// Display order for sorting in UI
+  sortOrder   Int       @default(0)
+
+  /// Projects using this template
+  projects    Project[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([category])
+  @@index([isActive, sortOrder])
 }
 
 model Ticket {

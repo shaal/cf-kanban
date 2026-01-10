@@ -25,12 +25,13 @@ export const GET: RequestHandler = async ({ params }) => {
 
 /**
  * PUT /api/projects/:id
- * Update a project's name, description, or settings
+ * Update a project's name, description, settings, or workspacePath
+ * GAP-A1.1: Added workspacePath handling with absolute path validation
  */
 export const PUT: RequestHandler = async ({ params, request }) => {
 	try {
 		const body = await request.json();
-		const { name, description, settings } = body;
+		const { name, description, settings, workspacePath } = body;
 
 		// Check if project exists
 		const existingProject = await prisma.project.findUnique({
@@ -43,7 +44,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 
 		// Build update data
 		const updateData: Record<string, unknown> = {};
-		
+
 		if (name !== undefined) {
 			if (typeof name !== 'string' || name.trim().length === 0) {
 				return json(
@@ -53,13 +54,33 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 			}
 			updateData.name = name.trim();
 		}
-		
+
 		if (description !== undefined) {
 			updateData.description = description?.trim() || null;
 		}
-		
+
 		if (settings !== undefined) {
 			updateData.settings = settings;
+		}
+
+		// GAP-A1.1: Handle workspacePath update
+		if (workspacePath !== undefined) {
+			if (workspacePath === null || workspacePath === '') {
+				updateData.workspacePath = null;
+			} else {
+				const trimmedPath = workspacePath.trim();
+				// Validate absolute path
+				const isAbsoluteUnix = trimmedPath.startsWith('/');
+				const isAbsoluteWindows = /^[A-Za-z]:\\/.test(trimmedPath);
+
+				if (!isAbsoluteUnix && !isAbsoluteWindows) {
+					return json(
+						{ error: 'Workspace path must be absolute (e.g., /Users/dev/project or C:\\Projects\\app)' },
+						{ status: 400 }
+					);
+				}
+				updateData.workspacePath = trimmedPath;
+			}
 		}
 
 		const project = await prisma.project.update({

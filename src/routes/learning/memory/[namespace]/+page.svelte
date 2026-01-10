@@ -1,14 +1,17 @@
 <script lang="ts">
 	/**
 	 * TASK-081: Namespace Viewer Page
+	 * GAP-3.4.2: Memory Browser Semantic Search
 	 *
 	 * Displays entries in a namespace with pagination.
-	 * Supports expanding entry details and deletion with confirmation.
+	 * Supports expanding entry details, deletion with confirmation,
+	 * and similar patterns panel using vector similarity.
 	 */
 	import type { PageData } from './$types';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
+	import { SimilarPatterns } from '$lib/components/memory';
 	import {
 		ArrowLeft,
 		ChevronLeft,
@@ -30,6 +33,32 @@
 	let expandedEntries = new Set<string>();
 	let deleteConfirm: string | null = null;
 	let isDeleting = false;
+
+	// Handle navigation to a similar entry
+	function handleSimilarSelect(entry: { key: string; namespace: string }) {
+		// If the entry is in the same namespace, just expand it
+		if (entry.namespace === data.namespace) {
+			// Check if entry is on current page
+			const entryOnPage = data.entries.find(e => e.key === entry.key);
+			if (entryOnPage) {
+				// Collapse current expanded entries and expand the selected one
+				expandedEntries.clear();
+				expandedEntries.add(entry.key);
+				expandedEntries = expandedEntries;
+				// Scroll to the entry
+				setTimeout(() => {
+					const element = document.querySelector(`[data-entry-key="${entry.key}"]`);
+					element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+				}, 100);
+			} else {
+				// Navigate to the entry (will need to find correct page)
+				goto(`/learning/memory/${encodeURIComponent(entry.namespace)}`);
+			}
+		} else {
+			// Navigate to different namespace
+			goto(`/learning/memory/${encodeURIComponent(entry.namespace)}`);
+		}
+	}
 
 	function toggleExpanded(key: string) {
 		if (expandedEntries.has(key)) {
@@ -122,7 +151,7 @@
 			<!-- Entry List -->
 			<div class="space-y-3">
 				{#each data.entries as entry (entry.key)}
-					<Card class="overflow-hidden">
+					<Card class="overflow-hidden" data-entry-key={entry.key}>
 						<button
 							class="w-full p-4 text-left hover:bg-gray-50 transition-colors"
 							onclick={() => toggleExpanded(entry.key)}
@@ -208,6 +237,15 @@
 										{/if}
 									</div>
 								{/if}
+
+								<!-- Similar Patterns (GAP-3.4.2) -->
+								<SimilarPatterns
+									entryKey={entry.key}
+									namespace={data.namespace}
+									limit={5}
+									minConfidence={0.3}
+									onSelect={handleSimilarSelect}
+								/>
 
 								<!-- Actions -->
 								<div class="flex justify-end gap-2 pt-2 border-t">

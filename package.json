@@ -25,7 +25,13 @@
     "format": "prettier --write .",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "audit": "npm audit --audit-level=high",
-    "audit:fix": "npm audit fix"
+    "audit:fix": "npm audit fix",
+    "db:migrate": "npx prisma migrate dev",
+    "db:seed": "npx tsx prisma/seed.ts",
+    "db:reset": "npx prisma migrate reset"
+  },
+  "prisma": {
+    "seed": "npx tsx prisma/seed.ts"
   },
   "type": "module",
   "devDependencies": {

@@ -4,6 +4,8 @@
    *
    * TASK-013: Create KanbanCard Component
    * GAP-3.3.3: Agent Status on Ticket Cards
+   * GAP-3.2.6: Feedback Interaction UI Enhancement - Question indicator
+   * GAP-UX.1: KanbanCard AI Status Indicators
    *
    * Features:
    * - Displays ticket title, description (truncated), priority badge, and labels
@@ -11,15 +13,19 @@
    * - Uses GripVertical icon for drag handle indication
    * - Priority color coding
    * - Agent status indicators for assigned agents (GAP-3.3.3)
+   * - Question indicator badge for tickets in NEEDS_FEEDBACK status (GAP-3.2.6)
+   * - AI status section with confidence, knowledge ring, and agent avatar (GAP-UX.1)
    */
-  import { GripVertical } from 'lucide-svelte';
+  import { GripVertical, MessageCircleQuestion } from 'lucide-svelte';
   import { Badge } from '../ui';
   import { cn } from '$lib/utils';
-  import type { Ticket, Priority } from '$lib/types';
+  import type { Ticket, Priority, TicketWithQuestions } from '$lib/types';
   import TicketAgentsDisplay from './TicketAgentsDisplay.svelte';
+  import AIStatusSection from './AIStatusSection.svelte';
+  import { createTicketAIStatusStore } from '$lib/stores/ai-status';
 
   interface Props {
-    ticket: Ticket;
+    ticket: Ticket | TicketWithQuestions;
     isDragging?: boolean;
     class?: string;
     onclick?: (ticket: Ticket) => void;
@@ -31,6 +37,35 @@
     class: className = '',
     onclick
   }: Props = $props();
+
+  /**
+   * GAP-3.2.6: Check if ticket has pending questions
+   */
+  function hasPendingQuestions(t: Ticket | TicketWithQuestions): boolean {
+    if ('questions' in t && Array.isArray(t.questions)) {
+      return t.questions.some(q => !q.answered);
+    }
+    // If in NEEDS_FEEDBACK status but no questions loaded, assume it has questions
+    return t.status === 'NEEDS_FEEDBACK';
+  }
+
+  /**
+   * GAP-3.2.6: Get count of pending questions
+   */
+  function getPendingQuestionCount(t: Ticket | TicketWithQuestions): number {
+    if ('questions' in t && Array.isArray(t.questions)) {
+      return t.questions.filter(q => !q.answered).length;
+    }
+    return 0;
+  }
+
+  // Reactive derived values for questions
+  let showQuestionIndicator = $derived(hasPendingQuestions(ticket));
+  let pendingQuestionCount = $derived(getPendingQuestionCount(ticket));
+
+  // GAP-UX.1: Subscribe to AI status for this ticket
+  const aiStatusStore = createTicketAIStatusStore(ticket.id);
+  const aiStatus = $derived($aiStatusStore);
 
   /**
    * Priority badge colors
@@ -76,10 +111,24 @@
     </div>
 
     <div class="flex-1 min-w-0">
-      <!-- Ticket title -->
-      <h4 class="font-medium text-sm text-gray-900 truncate">
-        {ticket.title}
-      </h4>
+      <!-- Ticket title with question indicator -->
+      <div class="flex items-center gap-2">
+        <h4 class="font-medium text-sm text-gray-900 truncate flex-1">
+          {ticket.title}
+        </h4>
+        <!-- GAP-3.2.6: Question indicator badge -->
+        {#if showQuestionIndicator}
+          <span
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 flex-shrink-0"
+            title="Needs your input - click to answer"
+          >
+            <MessageCircleQuestion class="w-3 h-3" />
+            {#if pendingQuestionCount > 0}
+              <span>{pendingQuestionCount}</span>
+            {/if}
+          </span>
+        {/if}
+      </div>
 
       <!-- Ticket description (truncated) -->
       {#if ticket.description}
@@ -110,6 +159,24 @@
         <!-- Agent status display (GAP-3.3.3) -->
         <TicketAgentsDisplay ticketId={ticket.id} size="xs" />
       </div>
+
+      <!-- GAP-UX.1: AI Status Section -->
+      {#if aiStatus}
+        <div class="mt-2">
+          <AIStatusSection
+            data={{
+              status: aiStatus.status,
+              confidence: aiStatus.confidence,
+              knowledge: aiStatus.knowledge,
+              agentType: aiStatus.agentType,
+              agentName: aiStatus.agentName,
+              currentTask: aiStatus.currentTask
+            }}
+            variant="compact"
+            size="xs"
+          />
+        </div>
+      {/if}
     </div>
   </div>
 </div>
