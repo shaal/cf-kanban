@@ -17,6 +17,7 @@ import type {
 	PatternSharingSettings,
 	TransferFilterOptions
 } from '$lib/types/transfer';
+import { settingsService } from '$lib/server/admin/settings-service';
 
 /**
  * TransferService handles cross-project pattern transfers
@@ -286,7 +287,99 @@ export class TransferService {
 	}
 
 	/**
+	 * GAP-3.1.3: Get transferable patterns respecting privacy settings
+	 * Only returns patterns from projects that allow transfer
+	 */
+	async getTransferablePatternsWithPrivacy(
+		requestingProjectId: string,
+		options: TransferFilterOptions = {}
+	): Promise<TransferablePattern[]> {
+		try {
+			// Get all patterns first
+			const allPatterns = await this.getTransferablePatterns(options);
+
+			// Filter based on privacy settings
+			const accessiblePatterns: TransferablePattern[] = [];
+
+			for (const pattern of allPatterns) {
+				// If pattern is from the requesting project, include it
+				if (pattern.projectId === requestingProjectId) {
+					accessiblePatterns.push(pattern);
+					continue;
+				}
+
+				// Check if source project allows transfers
+				const allowsTransfer = await settingsService.canTransferPatterns(pattern.projectId);
+				if (!allowsTransfer) {
+					continue;
+				}
+
+				// Check if source project shares with requesting project
+				const canAccess = await settingsService.canAccessPatterns(
+					pattern.projectId,
+					requestingProjectId
+				);
+
+				if (canAccess) {
+					accessiblePatterns.push(pattern);
+				}
+			}
+
+			return accessiblePatterns;
+		} catch (error) {
+			console.error('Failed to get transferable patterns with privacy:', error);
+			return [];
+		}
+	}
+
+	/**
+	 * GAP-3.1.3: Check if transfer is allowed between projects
+	 */
+	async canTransfer(
+		sourceProjectId: string,
+		targetProjectId: string
+	): Promise<{ allowed: boolean; reason?: string }> {
+		try {
+			// Check if source allows transfers
+			const sourceAllowsTransfer = await settingsService.canTransferPatterns(sourceProjectId);
+			if (!sourceAllowsTransfer) {
+				return {
+					allowed: false,
+					reason: 'Source project does not allow pattern transfers'
+				};
+			}
+
+			// Check if target allows incoming transfers
+			const targetAllowsTransfer = await settingsService.canTransferPatterns(targetProjectId);
+			if (!targetAllowsTransfer) {
+				return {
+					allowed: false,
+					reason: 'Target project does not allow incoming pattern transfers'
+				};
+			}
+
+			// Check if source shares with target
+			const canAccess = await settingsService.canAccessPatterns(sourceProjectId, targetProjectId);
+			if (!canAccess) {
+				return {
+					allowed: false,
+					reason: 'Source project does not share patterns with target project'
+				};
+			}
+
+			return { allowed: true };
+		} catch (error) {
+			console.error('Failed to check transfer permission:', error);
+			return {
+				allowed: false,
+				reason: 'Failed to verify transfer permissions'
+			};
+		}
+	}
+
+	/**
 	 * Execute pattern transfer
+	 * GAP-3.1.3: Now respects privacy settings before allowing transfer
 	 */
 	async executeTransfer(
 		patternId: string,
@@ -305,6 +398,18 @@ export class TransferService {
 					sourcePattern: {} as TransferablePattern,
 					timestamp,
 					error: 'Pattern not found or transfer preview failed'
+				};
+			}
+
+			// GAP-3.1.3: Check privacy settings before transfer
+			const transferCheck = await this.canTransfer(preview.pattern.projectId, targetProjectId);
+			if (!transferCheck.allowed) {
+				return {
+					success: false,
+					transferId,
+					sourcePattern: preview.pattern,
+					timestamp,
+					error: transferCheck.reason || 'Transfer not allowed due to privacy settings'
 				};
 			}
 

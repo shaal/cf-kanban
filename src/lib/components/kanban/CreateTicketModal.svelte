@@ -3,12 +3,14 @@
    * CreateTicketModal Component
    *
    * TASK-018: Add Ticket Creation Modal
+   * GAP-8.5: Contextual Suggestions on Ticket Creation
    *
    * A modal form for creating new tickets with:
    * - Title (required)
    * - Description (optional)
    * - Priority dropdown
    * - Labels (comma-separated)
+   * - AI-powered contextual suggestions (GAP-8.5)
    *
    * Uses fly/fade transitions for smooth animation.
    * Dispatches 'created' event on success.
@@ -17,6 +19,7 @@
   import { fly, fade } from 'svelte/transition';
   import Button from '$lib/components/ui/Button.svelte';
   import Input from '$lib/components/ui/Input.svelte';
+  import TicketSuggestions from './TicketSuggestions.svelte';
   import { X } from 'lucide-svelte';
 
   export let open = false;
@@ -226,6 +229,16 @@
             Separate multiple labels with commas
           </p>
         </div>
+
+        <!-- GAP-8.5: Contextual Suggestions -->
+        <TicketSuggestions
+          {title}
+          {description}
+          {priority}
+          labels={labelsInput.split(',').map(l => l.trim()).filter(Boolean)}
+          {projectId}
+          debounceMs={300}
+        />
 
         <!-- Actions -->
         <div class="flex justify-end gap-3 pt-4 border-t mt-6">

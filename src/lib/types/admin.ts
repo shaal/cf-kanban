@@ -168,7 +168,8 @@ export const SETTINGS_CATEGORIES = [
   'claude-flow',
   'integrations',
   'security',
-  'notifications'
+  'notifications',
+  'learning'
 ] as const;
 
 export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number];
@@ -196,6 +197,31 @@ export interface ClaudeFlowSettings {
   enableHNSW: boolean;
   memoryBackend: 'hybrid' | 'sqlite' | 'redis';
 }
+
+/**
+ * GAP-3.1.3: Learning preferences configuration
+ * Controls how patterns are shared and stored across projects
+ */
+export interface LearningConfig {
+  /** Whether patterns from this project should be visible to other projects */
+  shareGlobally: boolean;
+  /** Whether patterns can be transferred to/from this project */
+  allowTransfer: boolean;
+  /** How long to retain learned patterns (in days, null = indefinite) */
+  retentionDays: number | null;
+  /** List of specific project IDs that can access this project's patterns (empty = none, or all if shareGlobally) */
+  sharedWithProjects: string[];
+}
+
+/**
+ * GAP-3.1.3: Default learning configuration values
+ */
+export const DEFAULT_LEARNING_CONFIG: LearningConfig = {
+  shareGlobally: false,
+  allowTransfer: true,
+  retentionDays: null,
+  sharedWithProjects: []
+};
 
 /**
  * Check if user has admin privileges

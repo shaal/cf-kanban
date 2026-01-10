@@ -29,6 +29,7 @@ import {
   type CachedPattern
 } from '$lib/server/redis/cache';
 import { publishPatternEvent } from '$lib/server/redis/pubsub';
+import { settingsService } from '$lib/server/admin/settings-service';
 
 /**
  * Raw pattern data from Claude Flow memory
@@ -456,6 +457,150 @@ export class PatternService {
     });
 
     return { nodes, links };
+  }
+
+  /**
+   * GAP-3.1.3: Fetch patterns with privacy filtering
+   * Only returns patterns from projects that are shared with the requesting project
+   */
+  async fetchPatternsWithPrivacy(
+    requestingProjectId: string,
+    namespace = 'patterns'
+  ): Promise<Pattern[]> {
+    try {
+      // Get all patterns first
+      const allPatterns = await this.fetchPatterns(namespace);
+
+      // Get list of projects with global sharing enabled
+      const globalSharingProjects = await settingsService.getGlobalSharingProjects();
+
+      // Filter patterns based on privacy settings
+      const accessiblePatterns: Pattern[] = [];
+
+      for (const pattern of allPatterns) {
+        const patternProjectId = pattern.metadata?.projectId as string | undefined;
+
+        // If pattern has no project ID, include it (legacy/global patterns)
+        if (!patternProjectId) {
+          accessiblePatterns.push(pattern);
+          continue;
+        }
+
+        // If pattern is from the requesting project, include it
+        if (patternProjectId === requestingProjectId) {
+          accessiblePatterns.push(pattern);
+          continue;
+        }
+
+        // If pattern's project has global sharing, include it
+        if (globalSharingProjects.includes(patternProjectId)) {
+          accessiblePatterns.push(pattern);
+          continue;
+        }
+
+        // Check if source project has explicitly shared with requesting project
+        const canAccess = await settingsService.canAccessPatterns(
+          patternProjectId,
+          requestingProjectId
+        );
+        if (canAccess) {
+          accessiblePatterns.push(pattern);
+        }
+      }
+
+      return accessiblePatterns;
+    } catch (error) {
+      console.error('Failed to fetch patterns with privacy:', error);
+      return [];
+    }
+  }
+
+  /**
+   * GAP-3.1.3: Search patterns with privacy filtering
+   * Only returns patterns from accessible projects
+   */
+  async searchPatternsWithPrivacy(
+    query: string,
+    requestingProjectId: string,
+    namespace = 'patterns'
+  ): Promise<Pattern[]> {
+    try {
+      const searchResults = await this.searchPatterns(query, namespace);
+
+      // Get list of projects with global sharing enabled
+      const globalSharingProjects = await settingsService.getGlobalSharingProjects();
+
+      // Filter based on privacy
+      const accessiblePatterns: Pattern[] = [];
+
+      for (const pattern of searchResults) {
+        const patternProjectId = pattern.metadata?.projectId as string | undefined;
+
+        // No project ID = legacy/global pattern
+        if (!patternProjectId) {
+          accessiblePatterns.push(pattern);
+          continue;
+        }
+
+        // Own project's pattern
+        if (patternProjectId === requestingProjectId) {
+          accessiblePatterns.push(pattern);
+          continue;
+        }
+
+        // Globally shared project
+        if (globalSharingProjects.includes(patternProjectId)) {
+          accessiblePatterns.push(pattern);
+          continue;
+        }
+
+        // Explicitly shared
+        const canAccess = await settingsService.canAccessPatterns(
+          patternProjectId,
+          requestingProjectId
+        );
+        if (canAccess) {
+          accessiblePatterns.push(pattern);
+        }
+      }
+
+      return accessiblePatterns;
+    } catch (error) {
+      console.error('Failed to search patterns with privacy:', error);
+      return [];
+    }
+  }
+
+  /**
+   * GAP-3.1.3: Check if a pattern is accessible to a project
+   */
+  async isPatternAccessible(
+    patternId: string,
+    requestingProjectId: string,
+    namespace = 'patterns'
+  ): Promise<boolean> {
+    try {
+      const pattern = await this.getPattern(patternId, namespace);
+      if (!pattern) return false;
+
+      const patternProjectId = pattern.metadata?.projectId as string | undefined;
+
+      // No project ID = accessible
+      if (!patternProjectId) return true;
+
+      // Same project = accessible
+      if (patternProjectId === requestingProjectId) return true;
+
+      // Check global sharing
+      const globalSharingProjects = await settingsService.getGlobalSharingProjects();
+      if (globalSharingProjects.includes(patternProjectId)) return true;
+
+      // Check explicit sharing
+      return settingsService.canAccessPatterns(patternProjectId, requestingProjectId);
+    } catch (error) {
+      console.error('Failed to check pattern accessibility:', error);
+      return false;
+    }
   }
 
   /**

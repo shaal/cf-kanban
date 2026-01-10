@@ -11,8 +11,10 @@ import type {
   UpdateSettingRequest,
   DefaultProjectSettings,
   ClaudeFlowSettings,
+  LearningConfig,
   SettingsCategory
 } from '$lib/types/admin';
+import { DEFAULT_LEARNING_CONFIG } from '$lib/types/admin';
 import { auditService } from './audit-service';
 
 /**
@@ -329,6 +331,84 @@ export class SettingsService {
         });
       }
     }
+  }
+
+  /**
+   * GAP-3.1.3: Get learning config for a specific project
+   */
+  async getProjectLearningConfig(projectId: string): Promise<LearningConfig> {
+    return this.getSettingValue(
+      `learning.project.${projectId}`,
+      DEFAULT_LEARNING_CONFIG
+    );
+  }
+
+  /**
+   * GAP-3.1.3: Update learning config for a specific project
+   */
+  async updateProjectLearningConfig(
+    projectId: string,
+    config: Partial<LearningConfig>,
+    updaterId: string,
+    requestInfo?: { ipAddress?: string; userAgent?: string }
+  ): Promise<LearningConfig> {
+    const current = await this.getProjectLearningConfig(projectId);
+    const updated = { ...current, ...config };
+
+    await this.updateSetting(
+      {
+        key: `learning.project.${projectId}`,
+        value: updated,
+        description: `Learning preferences for project ${projectId}`,
+        category: 'learning'
+      },
+      updaterId,
+      requestInfo
+    );
+
+    return updated;
+  }
+
+  /**
+   * GAP-3.1.3: Get all projects with global sharing enabled
+   */
+  async getGlobalSharingProjects(): Promise<string[]> {
+    const settings = await prisma.systemSettings.findMany({
+      where: {
+        key: { startsWith: 'learning.project.' },
+        category: 'learning'
+      }
+    });
+
+    return settings
+      .filter((s) => {
+        const config = s.value as unknown as LearningConfig;
+        return config?.shareGlobally === true;
+      })
+      .map((s) => s.key.replace('learning.project.', ''));
+  }
+
+  /**
+   * GAP-3.1.3: Check if a project allows pattern transfer
+   */
+  async canTransferPatterns(projectId: string): Promise<boolean> {
+    const config = await this.getProjectLearningConfig(projectId);
+    return config.allowTransfer;
+  }
+
+  /**
+   * GAP-3.1.3: Check if source project patterns are visible to target project
+   */
+  async canAccessPatterns(sourceProjectId: string, targetProjectId: string): Promise<boolean> {
+    if (sourceProjectId === targetProjectId) return true;
+
+    const config = await this.getProjectLearningConfig(sourceProjectId);
+
+    // If globally shared, all projects can access
+    if (config.shareGlobally) return true;
+
+    // Check if target project is in the shared list
+    return config.sharedWithProjects.includes(targetProjectId);
   }
 
   /**

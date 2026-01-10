@@ -7,6 +7,7 @@
 
 import { claudeFlowCLI, CLIError, type CommandOptions } from './cli';
 import type { Agent, AgentType } from './agents';
+import { enforceSwarmLimits, checkSwarmLimits, ResourceLimitError } from '$lib/server/resources/allocation';
 
 /**
  * Available swarm topologies
@@ -151,11 +152,27 @@ export class SwarmService {
 	/**
 	 * Initialize a new swarm
 	 *
+	 * GAP-3.1.2: Now enforces resource limits before spawning
+	 *
 	 * @param config - Swarm configuration
 	 * @param options - Command options
 	 * @returns Swarm status after initialization
+	 * @throws ResourceLimitError if resource limits would be exceeded
 	 */
 	async init(config: SwarmConfig, options: CommandOptions = {}): Promise<SwarmStatus> {
+		// GAP-3.1.2: Check resource limits before spawning swarm
+		if (config.project) {
+			try {
+				await enforceSwarmLimits(config.project, config.maxAgents || 5);
+			} catch (error) {
+				if (error instanceof ResourceLimitError) {
+					throw error;
+				}
+				// Log but don't block on other errors (e.g., Redis unavailable)
+				console.warn('Resource limit check failed, proceeding with spawn:', error);
+			}
+		}
+
 		const args = this.buildInitArgs(config);
 
 		try {
@@ -171,6 +188,17 @@ export class SwarmService {
 			}
 			throw error;
 		}
+	}
+
+	/**
+	 * GAP-3.1.2: Check if spawning a swarm would exceed resource limits
+	 *
+	 * @param projectId - Project to check limits for
+	 * @param maxAgents - Maximum agents the swarm would spawn
+	 * @returns Resource check result
+	 */
+	async checkResourceLimits(projectId: string, maxAgents: number = 5) {
+		return checkSwarmLimits(projectId, maxAgents);
 	}
 
 	/**

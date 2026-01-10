@@ -6,6 +6,7 @@
  * GAP-3.3.3: Agent Status on Ticket Cards
  * GAP-3.2.6: Feedback Interaction UI Enhancement
  * GAP-UX.1: KanbanCard AI Status Indicators
+ * GAP-8.5: Contextual Suggestions on Ticket Creation
  */
 export { default as KanbanCard } from './KanbanCard.svelte';
 export { default as KanbanColumn } from './KanbanColumn.svelte';
@@ -15,6 +16,9 @@ export { default as TicketQuestions } from './TicketQuestions.svelte';
 export { default as TicketDetailModal } from './TicketDetailModal.svelte';
 export { default as AgentStatusBadge } from './AgentStatusBadge.svelte';
 export { default as TicketAgentsDisplay } from './TicketAgentsDisplay.svelte';
+
+// GAP-8.5: Contextual Suggestions on Ticket Creation
+export { default as TicketSuggestions } from './TicketSuggestions.svelte';
 
 // GAP-UX.1: AI Status Indicator Components
 export { default as AIStatusIndicator } from './AIStatusIndicator.svelte';

@@ -139,3 +139,8 @@ export * from './transfer';
  * GAP-3.3.3: Re-export ticket-agent assignment types
  */
 export * from './ticket-agents';
+
+/**
+ * GAP-3.1.2: Re-export resource allocation types
+ */
+export * from './resources';
