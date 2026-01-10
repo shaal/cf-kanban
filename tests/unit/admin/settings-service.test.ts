@@ -6,19 +6,17 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock Prisma
-const mockPrisma = {
-  systemSettings: {
-    findMany: vi.fn(),
-    findUnique: vi.fn(),
-    upsert: vi.fn(),
-    create: vi.fn(),
-    delete: vi.fn()
-  }
-};
-
+// Mock Prisma - define mock functions inline in vi.mock
 vi.mock('$lib/server/prisma', () => ({
-  prisma: mockPrisma
+  prisma: {
+    systemSettings: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+      create: vi.fn(),
+      delete: vi.fn()
+    }
+  }
 }));
 
 // Mock audit service
@@ -34,6 +32,18 @@ import {
   DEFAULT_PROJECT_SETTINGS,
   DEFAULT_CLAUDE_FLOW_SETTINGS
 } from '$lib/server/admin/settings-service';
+import { prisma } from '$lib/server/prisma';
+
+// Get references to mocked functions
+const mockPrisma = prisma as unknown as {
+  systemSettings: {
+    findMany: ReturnType<typeof vi.fn>;
+    findUnique: ReturnType<typeof vi.fn>;
+    upsert: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+  };
+};
 
 describe('SettingsService', () => {
   let service: SettingsService;
