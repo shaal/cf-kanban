@@ -34,7 +34,7 @@ describe('Topology Selector', () => {
           expectedDuration: 0.5
         };
 
-        const result = selector.selector.selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('single');
         expect(result.maxAgents).toBe(1);

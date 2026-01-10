@@ -77,7 +77,7 @@ export const TOPOLOGY_INFO: Record<Topology, TopologyInfo> = {
 	mesh: {
 		name: 'Mesh Network',
 		description: 'All agents communicate directly with each other as peers',
-		bestFor: ['Collaborative work', 'Code review', 'Brainstorming', 'Parallel independent tasks'],
+		bestFor: ['Collaboration', 'Code review', 'Brainstorming', 'Parallel independent tasks'],
 		agentLimit: 5,
 		icon: 'network'
 	},
@@ -97,8 +97,8 @@ export const TOPOLOGY_INFO: Record<Topology, TopologyInfo> = {
 		name: 'Hierarchical Mesh',
 		description: 'Coordinator with peer-to-peer worker communication',
 		bestFor: [
-			'Security-sensitive work',
-			'Long-running tasks',
+			'Security tasks',
+			'Long-running work',
 			'Quality-critical features',
 			'Cross-team coordination'
 		],
@@ -136,10 +136,10 @@ export class TopologySelector {
 		}
 
 		// Rule 2: Hierarchical for complex tasks
-		if (factors.complexity >= 7 || factors.agentCount > 5) {
+		if (factors.complexity >= 6 || factors.agentCount > 5) {
 			reasoning.push('High complexity or many agents requires hierarchical coordination');
 
-			if (factors.complexity >= 7) {
+			if (factors.complexity >= 6) {
 				reasoning.push(`Complexity score ${factors.complexity} indicates complex task`);
 				confidence += 0.1;
 			}
@@ -216,8 +216,8 @@ export class TopologySelector {
 
 		// Rule 7: Mesh for consensus-requiring tasks
 		if (factors.requiresConsensus && factors.agentCount <= 5) {
-			reasoning.push('Consensus required among agents');
-			reasoning.push('Mesh topology allows direct peer communication');
+			reasoning.push('Collaborative consensus required among agents');
+			reasoning.push('Mesh topology allows direct peer-to-peer communicate');
 
 			return {
 				topology: 'mesh',
@@ -230,7 +230,7 @@ export class TopologySelector {
 
 		// Rule 8: Mesh for collaborative work with moderate complexity
 		if (factors.complexity <= 4 && factors.agentCount <= 3 && !factors.hasDependencies) {
-			reasoning.push('Collaborative task suited for mesh topology');
+			reasoning.push('Default to mesh for collaborative task');
 			reasoning.push('All agents can communicate directly');
 
 			return {

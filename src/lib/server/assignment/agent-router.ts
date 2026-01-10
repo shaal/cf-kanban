@@ -335,3 +335,24 @@ export class AgentRouter {
 
 // Singleton instance
 export const agentRouter = new AgentRouter();
+
+/**
+ * Convenience function to assign agents without instantiating class
+ */
+export async function assignAgents(
+	analysis: AnalysisResult,
+	manualOverride?: Partial<AgentAssignment>
+): Promise<AgentAssignment> {
+	return agentRouter.assignAgents(analysis, manualOverride);
+}
+
+/**
+ * Convenience function to store successful assignment without instantiating class
+ */
+export async function storeSuccessfulAssignment(
+	analysis: AnalysisResult,
+	assignment: AgentAssignment,
+	successRate: number
+): Promise<boolean> {
+	return agentRouter.storeSuccessfulAssignment(analysis, assignment, successRate);
+}
