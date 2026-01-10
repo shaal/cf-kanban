@@ -8,13 +8,15 @@ datasource db {
 }
 
 model Project {
-  id          String   @id @default(cuid())
+  id          String          @id @default(cuid())
   name        String
   description String?
-  settings    Json     @default("{}")
+  settings    Json            @default("{}")
+  isArchived  Boolean         @default(false)
   tickets     Ticket[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  members     ProjectMember[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 }
 
 model Ticket {
@@ -142,4 +144,169 @@ model ExecutionCheckpoint {
 
   @@index([ticketId])
   @@index([ticketId, createdAt])
+}
+
+/// TASK-100-104: User roles for access control
+enum UserRole {
+  OWNER    /// Full access, can delete organization
+  ADMIN    /// Admin access, can manage users and projects
+  MEMBER   /// Standard member, can edit projects
+  VIEWER   /// Read-only access
+}
+
+/// TASK-100-104: User model for authentication and authorization
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  name           String?
+  avatarUrl      String?
+  role           UserRole        @default(MEMBER)
+  isActive       Boolean         @default(true)
+
+  /// Activity tracking
+  lastLoginAt    DateTime?
+  loginCount     Int             @default(0)
+
+  /// Invitation tracking
+  invitedBy      String?
+  invitedAt      DateTime?
+  acceptedAt     DateTime?
+
+  /// Project memberships
+  projectMembers ProjectMember[]
+
+  /// Audit logs created by this user
+  auditLogs      AuditLog[]
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([email])
+  @@index([role])
+}
+
+/// TASK-101: Project membership for per-project roles
+model ProjectMember {
+  id        String      @id @default(cuid())
+
+  projectId String
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Project-specific role (can override global role for this project)
+  role      UserRole    @default(MEMBER)
+
+  /// When user joined this project
+  joinedAt  DateTime    @default(now())
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+}
+
+/// TASK-104: Audit log action categories
+enum AuditAction {
+  /// User actions
+  USER_CREATED
+  USER_UPDATED
+  USER_DELETED
+  USER_INVITED
+  USER_ROLE_CHANGED
+  USER_LOGIN
+  USER_LOGOUT
+
+  /// Project actions
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  PROJECT_DELETED
+  PROJECT_ARCHIVED
+  PROJECT_MEMBER_ADDED
+  PROJECT_MEMBER_REMOVED
+
+  /// Ticket actions
+  TICKET_CREATED
+  TICKET_UPDATED
+  TICKET_DELETED
+  TICKET_STATUS_CHANGED
+
+  /// System settings actions
+  SETTINGS_UPDATED
+  INTEGRATION_CONFIGURED
+
+  /// Security actions
+  PERMISSION_DENIED
+  SENSITIVE_DATA_ACCESSED
+}
+
+/// TASK-104: Audit log for tracking admin and sensitive actions
+model AuditLog {
+  id          String      @id @default(cuid())
+
+  /// The user who performed the action
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  /// Action category
+  action      AuditAction
+
+  /// Entity type affected (User, Project, Ticket, etc.)
+  entityType  String
+
+  /// ID of the affected entity
+  entityId    String?
+
+  /// Detailed description of the action
+  description String
+
+  /// Additional metadata (old values, new values, context)
+  metadata    Json        @default("{}")
+
+  /// IP address of the request
+  ipAddress   String?
+
+  /// User agent string
+  userAgent   String?
+
+  /// Whether this was a sensitive operation
+  isSensitive Boolean     @default(false)
+
+  /// When the action occurred
+  createdAt   DateTime    @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([isSensitive, createdAt])
+}
+
+/// TASK-103: System settings for global configuration
+model SystemSettings {
+  id          String   @id @default(cuid())
+
+  /// Setting key (e.g., 'default.project.settings', 'claude-flow.api-key')
+  key         String   @unique
+
+  /// Setting value as JSON
+  value       Json
+
+  /// Description of what this setting controls
+  description String?
+
+  /// Category for grouping settings
+  category    String   @default("general")
+
+  /// Whether this is a sensitive setting (should be masked in UI)
+  isSensitive Boolean  @default(false)
+
+  /// Last modified by user ID
+  updatedBy   String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([key])
 }
