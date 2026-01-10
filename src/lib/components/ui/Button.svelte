@@ -7,11 +7,12 @@
    * A versatile button component with multiple variants and sizes.
    */
   import { cn } from '$lib/utils';
+  import type { HTMLButtonAttributes } from 'svelte/elements';
 
   type Variant = 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
   type Size = 'default' | 'sm' | 'lg' | 'icon';
 
-  interface Props {
+  interface Props extends HTMLButtonAttributes {
     variant?: Variant;
     size?: Size;
     disabled?: boolean;
@@ -28,7 +29,8 @@
     type = 'button',
     class: className = '',
     onclick,
-    children
+    children,
+    ...restProps
   }: Props = $props();
 
   const variants: Record<Variant, string> = {
@@ -60,6 +62,7 @@
   {type}
   {disabled}
   {onclick}
+  {...restProps}
 >
   {#if children}
     {@render children()}

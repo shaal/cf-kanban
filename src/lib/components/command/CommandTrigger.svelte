@@ -34,6 +34,7 @@
 		onclick={() => openCommandPalette()}
 		aria-label="Open command palette"
 		title="{modKey}+K"
+		data-tour="command-trigger"
 	>
 		<Command class="h-5 w-5" />
 	</button>
@@ -48,6 +49,7 @@
 			className
 		)}
 		onclick={() => openCommandPalette()}
+		data-tour="command-trigger"
 	>
 		<Search class="h-4 w-4" />
 		<span class="text-xs font-medium">{modKey}K</span>
@@ -65,6 +67,7 @@
 			className
 		)}
 		onclick={() => openCommandPalette()}
+		data-tour="command-trigger"
 	>
 		<Search class="h-4 w-4 flex-shrink-0" />
 		<span class="flex-1 text-left truncate">Search commands...</span>

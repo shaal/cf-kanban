@@ -128,3 +128,71 @@ export {
   type AIConfidenceUpdatePayload,
   type AIKnowledgeUpdatePayload
 } from './ai-status';
+
+// GAP-3.5.2: Health status store for system monitoring
+export {
+  healthStore,
+  healthStatus,
+  activeAlerts,
+  isHealthChecking,
+  checkHealth,
+  startHealthPolling,
+  stopHealthPolling,
+  dismissAlert,
+  dismissAllAlerts,
+  clearAlerts,
+  resetHealthStore,
+  getStatusColor,
+  getStatusLabel,
+  type HealthStatus,
+  type ComponentHealth,
+  type HealthCheckResult,
+  type HealthAlert
+} from './health';
+
+// GAP-8.3: Onboarding store for interactive tutorials
+export {
+  onboardingStore,
+  isFirstVisit,
+  showWelcomeModal,
+  selectedPath,
+  isTourActive,
+  tourProgress,
+  isOnboardingCompleted,
+  currentStepIndex,
+  hasResumableTour,
+  getTourSteps,
+  QUICK_START_STEPS,
+  FULL_TOUR_STEPS,
+  type OnboardingPath,
+  type TourStep,
+  type TourProgress,
+  type OnboardingState
+} from './onboarding';
+
+// GAP-8.1: Chat store for AI Chat Assistant
+export {
+  messages,
+  isOpen,
+  isLoading,
+  ticketCreation,
+  chatError,
+  unreadCount,
+  toggleChat,
+  openChat,
+  closeChat,
+  addUserMessage,
+  addAssistantMessage,
+  addSystemMessage,
+  setLoading,
+  setError,
+  updateTicketCreation,
+  resetTicketCreation,
+  clearMessages,
+  getChatState,
+  initializeChat,
+  type MessageRole,
+  type MessageIntent,
+  type TicketCreationState,
+  type ChatMessage
+} from './chat';

@@ -11,6 +11,7 @@
   import { enhance } from '$app/forms';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
+  import { SystemStatusIndicator } from '$lib/components/ui';
   import PathValidationIndicator from '$lib/components/ui/PathValidationIndicator.svelte';
   import DuplicatePathWarningModal from '$lib/components/ui/DuplicatePathWarningModal.svelte';
   import { TemplateSelector } from '$lib/components/templates';
@@ -123,7 +124,11 @@
   <header class="max-w-6xl mx-auto mb-8">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-bold text-gray-900">Projects</h1>
+        <div class="flex items-center gap-3">
+          <h1 class="text-3xl font-bold text-gray-900">Projects</h1>
+          <!-- GAP-3.5.2: System status indicator -->
+          <SystemStatusIndicator showLabel={false} size="md" />
+        </div>
         <p class="mt-1 text-gray-600">Manage your Kanban boards</p>
       </div>
       <Button onclick={() => (showCreateForm = true)}>

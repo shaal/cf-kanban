@@ -19,7 +19,7 @@
 	import TicketDetailModal from '$lib/components/kanban/TicketDetailModal.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import Button from '$lib/components/ui/Button.svelte';
-	import { ConnectionIndicator } from '$lib/components/ui';
+	import { ConnectionIndicator, SystemStatusIndicator } from '$lib/components/ui';
 	import { ArrowLeft, Plus } from 'lucide-svelte';
 	import {
 		connect,
@@ -255,6 +255,8 @@
 				<div class="flex items-center gap-3">
 					<h1 class="text-2xl font-bold">{data.project.name}</h1>
 					<ConnectionIndicator showLabel={false} size="sm" />
+					<!-- GAP-3.5.2: System status indicator -->
+					<SystemStatusIndicator showLabel={false} size="sm" />
 				</div>
 				{#if data.project.description}
 					<p class="text-gray-600 mt-1">{data.project.description}</p>
@@ -263,7 +265,7 @@
 			{#if $hasPending}
 				<span class="text-sm text-yellow-600 animate-pulse">Syncing...</span>
 			{/if}
-			<Button onclick={() => (showCreateModal = true)}>
+			<Button onclick={() => (showCreateModal = true)} data-tour="create-ticket">
 				<Plus class="w-4 h-4 mr-2" />
 				New Ticket
 			</Button>

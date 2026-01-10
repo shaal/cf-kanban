@@ -18,3 +18,6 @@ export { default as ErrorMessage } from './ErrorMessage.svelte';
 export { default as Toast } from './Toast.svelte';
 export { default as PathValidationIndicator } from './PathValidationIndicator.svelte';
 export { default as DuplicatePathWarningModal } from './DuplicatePathWarningModal.svelte';
+// GAP-3.5.2: System health components
+export { default as SystemStatusIndicator } from './SystemStatusIndicator.svelte';
+export { default as HealthAlertToasts } from './HealthAlertToasts.svelte';

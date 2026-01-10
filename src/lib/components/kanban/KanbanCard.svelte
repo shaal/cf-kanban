@@ -103,6 +103,7 @@
   onclick={handleClick}
   onkeydown={handleKeyDown}
   aria-label="Ticket: {ticket.title}"
+  data-tour="ticket-card"
 >
   <div class="flex items-start gap-2">
     <!-- Drag handle icon -->

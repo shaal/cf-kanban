@@ -103,6 +103,7 @@
     'rounded-lg border-2',
     statusColors[status]
   )}
+  data-tour="kanban-columns"
 >
   <!-- Column header -->
   <header class="p-3 border-b border-inherit">

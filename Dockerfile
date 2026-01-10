@@ -33,6 +33,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Set production environment for build (uses node adapter in svelte.config.js)
+ENV NODE_ENV=production
+
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/prisma ./prisma
@@ -40,7 +43,7 @@ COPY --from=deps /app/prisma ./prisma
 # Copy source files
 COPY . .
 
-# Build the SvelteKit application
+# Build the SvelteKit application with node adapter
 RUN npm run build
 
 # Prune dev dependencies after build

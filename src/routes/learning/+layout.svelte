@@ -33,31 +33,36 @@
 			href: '/learning/agents',
 			label: 'Agent Catalog',
 			icon: Bot,
-			description: 'Browse 60+ agent types'
+			description: 'Browse 60+ agent types',
+			tourId: 'nav-agents'
 		},
 		{
 			href: '/learning/neural',
 			label: 'Neural Training',
 			icon: Brain,
-			description: 'SONA, MoE, EWC metrics'
+			description: 'SONA, MoE, EWC metrics',
+			tourId: 'nav-neural'
 		},
 		{
 			href: '/learning/patterns',
 			label: 'Patterns',
 			icon: GitCompare,
-			description: 'Learned patterns library'
+			description: 'Learned patterns library',
+			tourId: 'nav-patterns'
 		},
 		{
 			href: '/learning/memory',
 			label: 'Memory',
 			icon: Database,
-			description: 'AgentDB memory store'
+			description: 'AgentDB memory store',
+			tourId: 'nav-memory'
 		},
 		{
 			href: '/learning/transfer',
 			label: 'Transfer',
 			icon: Share2,
-			description: 'Share patterns via IPFS'
+			description: 'Share patterns via IPFS',
+			tourId: 'nav-transfer'
 		}
 	];
 
@@ -141,6 +146,7 @@
 								? 'bg-indigo-50 text-indigo-700 font-medium'
 								: 'text-gray-700 hover:bg-gray-50'}"
 						onclick={() => (sidebarOpen = false)}
+						data-tour={item.tourId}
 					>
 						<item.icon class="w-4 h-4 flex-shrink-0 {active ? 'text-indigo-600' : 'text-gray-400'}" />
 						<div class="flex-1 min-w-0">

@@ -108,6 +108,7 @@
   class="flex gap-4 overflow-x-auto p-4 min-h-[calc(100vh-120px)] bg-gray-100"
   role="region"
   aria-label="Kanban board for project"
+  data-tour="kanban-board"
 >
   {#each visibleColumns as status (status)}
     <KanbanColumn
