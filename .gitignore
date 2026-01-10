@@ -48,3 +48,5 @@ prisma/*.db
 # Misc
 .turbo/
 *.tsbuildinfo
+
+.playwright-mcp/

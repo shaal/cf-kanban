@@ -30,7 +30,7 @@
         <h1 class="text-3xl font-bold text-gray-900">Projects</h1>
         <p class="mt-1 text-gray-600">Manage your Kanban boards</p>
       </div>
-      <Button on:click={() => (showCreateForm = true)}>
+      <Button onclick={() => (showCreateForm = true)}>
         <Plus class="w-4 h-4 mr-2" />
         New Project
       </Button>
@@ -103,7 +103,7 @@
             <Button
               type="button"
               variant="ghost"
-              on:click={() => (showCreateForm = false)}
+              onclick={() => (showCreateForm = false)}
               disabled={isSubmitting}
             >
               Cancel
@@ -155,7 +155,7 @@
         </div>
         <h2 class="text-xl font-semibold text-gray-900 mb-2">No projects yet</h2>
         <p class="text-gray-600 mb-6">Create your first project to get started with CF Kanban.</p>
-        <Button on:click={() => (showCreateForm = true)}>
+        <Button onclick={() => (showCreateForm = true)}>
           <Plus class="w-4 h-4 mr-2" />
           Create Your First Project
         </Button>

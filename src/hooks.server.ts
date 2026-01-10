@@ -27,7 +27,7 @@ const PROTECTED_ROUTES = [
  * Public route patterns
  * Routes matching these patterns are always accessible
  */
-const PUBLIC_ROUTES = ['/auth', '/api/health', '/'];
+const PUBLIC_ROUTES = ['/auth', '/api/health', '/', '/projects', '/api/projects', '/api/tickets'];
 
 /**
  * Check if a path matches any pattern in the list

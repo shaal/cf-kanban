@@ -232,7 +232,7 @@
           <Button
             type="button"
             variant="ghost"
-            on:click={handleClose}
+            onclick={handleClose}
             disabled={loading}
           >
             Cancel

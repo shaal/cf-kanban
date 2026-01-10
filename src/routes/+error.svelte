@@ -54,7 +54,7 @@
 
     <!-- Actions -->
     <div class="flex flex-col sm:flex-row gap-3 justify-center">
-      <Button on:click={() => history.back()} variant="outline">
+      <Button onclick={() => history.back()} variant="outline">
         <ArrowLeft class="w-4 h-4 mr-2" />
         Go Back
       </Button>

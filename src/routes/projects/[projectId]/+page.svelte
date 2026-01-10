@@ -224,7 +224,7 @@
 			{#if $hasPending}
 				<span class="text-sm text-yellow-600 animate-pulse">Syncing...</span>
 			{/if}
-			<Button on:click={() => (showCreateModal = true)}>
+			<Button onclick={() => (showCreateModal = true)}>
 				<Plus class="w-4 h-4 mr-2" />
 				New Ticket
 			</Button>
@@ -307,7 +307,7 @@
 				</div>
 
 				<div class="flex justify-end gap-2 pt-4">
-					<Button type="button" variant="ghost" on:click={() => (showCreateModal = false)}>
+					<Button type="button" variant="ghost" onclick={() => (showCreateModal = false)}>
 						Cancel
 					</Button>
 					<Button type="submit">Create Ticket</Button>
