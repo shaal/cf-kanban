@@ -99,7 +99,7 @@ describe('Agent Router', () => {
           ticketType: 'chore',
           suggestedAgents: ['coder'],
           suggestedTopology: 'single',
-          complexity: 1
+          confidence: 0.6
         });
 
         const result = await router.assignAgents(analysis);
@@ -265,7 +265,7 @@ describe('Agent Router', () => {
         expect(result.reasoning.some(r => r.includes('bug'))).toBe(true);
       });
 
-      it('should include complexity in reasoning', async () => {
+      it('should include confidence in reasoning', async () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
           confidence: 0.85
@@ -273,7 +273,7 @@ describe('Agent Router', () => {
 
         const result = await router.assignAgents(analysis);
 
-        expect(result.reasoning.some(r => r.includes('7'))).toBe(true);
+        expect(result.reasoning.some(r => r.includes('confidence'))).toBe(true);
       });
 
       it('should explain each agent addition', async () => {
@@ -327,7 +327,7 @@ describe('Agent Router', () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
           suggestedAgents: [],
-          complexity: 1
+          confidence: 0.6
         });
 
         const result = await router.assignAgents(analysis);
@@ -340,7 +340,7 @@ describe('Agent Router', () => {
       it('should handle very high complexity', async () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
-          complexity: 10,
+          confidence: 0.60,
           suggestedAgents: ['coordinator', 'coder', 'tester', 'reviewer']
         });
 
@@ -379,17 +379,18 @@ describe('Agent Router', () => {
         ],
         topology: 'mesh',
         confidence: 0.8,
-        reasoning: ['Test reasoning']
+        reasoning: ['Test reasoning'],
+        fromPattern: false
       };
 
-      await storeSuccessfulAssignment(analysis, assignment, 0.9);
+      await router.storeSuccessfulAssignment(analysis, assignment, 0.9);
 
       expect(mockExecute).toHaveBeenCalledWith(
         'memory',
         expect.arrayContaining([
           'store',
           '--key',
-          expect.stringContaining('assignment-'),
+          expect.stringContaining('pattern-'),
           '--value',
           expect.stringContaining('coder'),
           '--namespace',
@@ -408,10 +409,11 @@ describe('Agent Router', () => {
         agents: [{ type: 'coder', role: 'worker', priority: 1 }],
         topology: 'single',
         confidence: 0.7,
-        reasoning: []
+        reasoning: [],
+        fromPattern: false
       };
 
-      await storeSuccessfulAssignment(analysis, assignment, 0.95);
+      await router.storeSuccessfulAssignment(analysis, assignment, 0.95);
 
       expect(mockExecute).toHaveBeenCalledWith(
         'memory',
@@ -434,12 +436,75 @@ describe('Agent Router', () => {
         agents: [{ type: 'coder', role: 'worker', priority: 1 }],
         topology: 'single',
         confidence: 0.7,
-        reasoning: []
+        reasoning: [],
+        fromPattern: false
       };
 
-      // Should not throw
-      await expect(storeSuccessfulAssignment(analysis, assignment, 0.9))
-        .resolves.not.toThrow();
+      // Should return false on failure
+      const result = await router.storeSuccessfulAssignment(analysis, assignment, 0.9);
+      expect(result).toBe(false);
+    });
+
+    it('should return true on successful storage', async () => {
+      mockExecute.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, timedOut: false });
+
+      const analysis: AnalysisResult = createMockAnalysis({
+        ticketType: 'feature',
+        confidence: 0.7
+      });
+
+      const assignment: AgentAssignment = {
+        agents: [{ type: 'coder', role: 'worker', priority: 1 }],
+        topology: 'single',
+        confidence: 0.7,
+        reasoning: [],
+        fromPattern: false
+      };
+
+      const result = await router.storeSuccessfulAssignment(analysis, assignment, 0.9);
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('getAgentCapabilities', () => {
+    it('should return capabilities for coder agent', () => {
+      const capabilities = router.getAgentCapabilities('coder');
+      expect(capabilities).toContain('implementation');
+      expect(capabilities).toContain('coding');
+    });
+
+    it('should return capabilities for security-auditor agent', () => {
+      const capabilities = router.getAgentCapabilities('security-auditor');
+      expect(capabilities).toContain('security-audit');
+      expect(capabilities).toContain('vulnerability');
+    });
+
+    it('should return empty array for unknown agent type', () => {
+      const capabilities = router.getAgentCapabilities('unknown' as any);
+      expect(capabilities).toEqual([]);
+    });
+  });
+
+  describe('scoreAgentMatch', () => {
+    it('should return 1.0 for perfect match', () => {
+      const score = router.scoreAgentMatch('coder', ['implementation', 'coding']);
+      expect(score).toBe(1.0);
+    });
+
+    it('should return 0 for no match', () => {
+      const score = router.scoreAgentMatch('coder', ['documentation', 'api']);
+      expect(score).toBe(0);
+    });
+
+    it('should return partial score for partial match', () => {
+      const score = router.scoreAgentMatch('coder', ['implementation', 'documentation']);
+      expect(score).toBe(0.5);
+    });
+  });
+
+  describe('singleton instance', () => {
+    it('should export a singleton', () => {
+      expect(agentRouter).toBeInstanceOf(AgentRouter);
     });
   });
 });
@@ -451,11 +516,9 @@ function createMockAnalysis(overrides: Partial<AnalysisResult>): AnalysisResult 
     keywords: [],
     suggestedLabels: [],
     confidence: 0.7,
-    estimatedHours: 4,
     suggestedAgents: ['coder', 'tester'],
     suggestedTopology: 'mesh',
-    dependencies: [],
-    risks: [],
+    intent: 'addition',
     ...overrides
   };
 }

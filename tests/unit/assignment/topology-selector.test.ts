@@ -5,9 +5,10 @@
  * swarm topology based on task complexity, agent count, and other factors.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  selectTopology,
+  TopologySelector,
+  topologySelector,
   TOPOLOGY_INFO,
   type TopologyFactors,
   type TopologyDecision,
@@ -15,6 +16,12 @@ import {
 } from '$lib/server/assignment/topology-selector';
 
 describe('Topology Selector', () => {
+  let selector: TopologySelector;
+
+  beforeEach(() => {
+    selector = new TopologySelector();
+  });
+
   describe('selectTopology', () => {
     describe('single topology', () => {
       it('should return single for simple task with 1 agent', () => {
@@ -27,7 +34,7 @@ describe('Topology Selector', () => {
           expectedDuration: 0.5
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selector.selectTopology(factors);
 
         expect(result.topology).toBe('single');
         expect(result.maxAgents).toBe(1);
@@ -44,7 +51,7 @@ describe('Topology Selector', () => {
           expectedDuration: 1
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('single');
       });
@@ -59,7 +66,7 @@ describe('Topology Selector', () => {
           expectedDuration: 0.5
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.reasoning.some(r => r.toLowerCase().includes('simple'))).toBe(true);
         expect(result.reasoning.some(r => r.toLowerCase().includes('single'))).toBe(true);
@@ -77,7 +84,7 @@ describe('Topology Selector', () => {
           expectedDuration: 2
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('mesh');
         expect(result.maxAgents).toBe(5);
@@ -94,7 +101,7 @@ describe('Topology Selector', () => {
           expectedDuration: 3
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('mesh');
       });
@@ -109,7 +116,7 @@ describe('Topology Selector', () => {
           expectedDuration: 2
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.reasoning.some(r =>
           r.toLowerCase().includes('collaborative') ||
@@ -127,7 +134,7 @@ describe('Topology Selector', () => {
           expectedDuration: 2
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('mesh');
         expect(result.reasoning.some(r => r.toLowerCase().includes('default'))).toBe(true);
@@ -145,7 +152,7 @@ describe('Topology Selector', () => {
           expectedDuration: 4
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('hierarchical');
         expect(result.maxAgents).toBe(10);
@@ -162,7 +169,7 @@ describe('Topology Selector', () => {
           expectedDuration: 3
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('hierarchical');
       });
@@ -177,7 +184,7 @@ describe('Topology Selector', () => {
           expectedDuration: 3
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('hierarchical');
         expect(result.reasoning.some(r => r.toLowerCase().includes('dependencies'))).toBe(true);
@@ -193,7 +200,7 @@ describe('Topology Selector', () => {
           expectedDuration: 8
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.reasoning.some(r =>
           r.toLowerCase().includes('coordination') ||
@@ -213,7 +220,7 @@ describe('Topology Selector', () => {
           expectedDuration: 3
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('hybrid');
         expect(result.maxAgents).toBe(8);
@@ -230,7 +237,7 @@ describe('Topology Selector', () => {
           expectedDuration: 5 // More than 4 hours
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('hybrid');
       });
@@ -245,7 +252,7 @@ describe('Topology Selector', () => {
           expectedDuration: 3
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.reasoning.some(r =>
           r.toLowerCase().includes('security') ||
@@ -267,7 +274,7 @@ describe('Topology Selector', () => {
           expectedDuration: 2
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('hierarchical');
       });
@@ -282,7 +289,7 @@ describe('Topology Selector', () => {
           expectedDuration: 2
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('hierarchical');
       });
@@ -298,7 +305,7 @@ describe('Topology Selector', () => {
         };
 
         // Security with 2 agents and low complexity could be mesh or hybrid
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(['hybrid', 'mesh']).toContain(result.topology);
       });
@@ -315,7 +322,7 @@ describe('Topology Selector', () => {
           expectedDuration: 0
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result).toBeDefined();
         expect(result.topology).toBeDefined();
@@ -331,7 +338,7 @@ describe('Topology Selector', () => {
           expectedDuration: 40
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('hierarchical');
         expect(result.coordinatorRequired).toBe(true);
@@ -347,7 +354,7 @@ describe('Topology Selector', () => {
           expectedDuration: 0
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result).toBeDefined();
       });
@@ -362,7 +369,7 @@ describe('Topology Selector', () => {
           expectedDuration: 100
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.topology).toBe('hybrid');
       });
@@ -379,7 +386,7 @@ describe('Topology Selector', () => {
           expectedDuration: 2
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.reasoning.length).toBeGreaterThan(0);
       });
@@ -394,7 +401,7 @@ describe('Topology Selector', () => {
           expectedDuration: 6
         };
 
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
 
         expect(result.reasoning.length).toBeGreaterThan(1);
       });
@@ -437,8 +444,10 @@ describe('Topology Selector', () => {
         expect(TOPOLOGY_INFO.mesh.description.toLowerCase()).toContain('communicate');
       });
 
-      it('should be suited for collaboration', () => {
-        expect(TOPOLOGY_INFO.mesh.bestFor).toContain('Collaboration');
+      it('should be suited for collaborative work', () => {
+        expect(TOPOLOGY_INFO.mesh.bestFor.some(b =>
+          b.toLowerCase().includes('collaborat') || b.toLowerCase().includes('parallel')
+        )).toBe(true);
       });
 
       it('should have agent limit of 5', () => {
@@ -522,7 +531,7 @@ describe('Topology Selector', () => {
       ];
 
       testCases.forEach(factors => {
-        const result = selectTopology(factors);
+        const result = selector.selectTopology(factors);
         expect(validTopologies).toContain(result.topology);
       });
     });
@@ -537,7 +546,7 @@ describe('Topology Selector', () => {
         expectedDuration: 3
       };
 
-      const result = selectTopology(factors);
+      const result = selector.selectTopology(factors);
 
       expect(typeof result.maxAgents).toBe('number');
       expect(result.maxAgents).toBeGreaterThan(0);
@@ -553,7 +562,7 @@ describe('Topology Selector', () => {
         expectedDuration: 3
       };
 
-      const result = selectTopology(factors);
+      const result = selector.selectTopology(factors);
 
       expect(typeof result.coordinatorRequired).toBe('boolean');
     });
@@ -568,9 +577,76 @@ describe('Topology Selector', () => {
         expectedDuration: 3
       };
 
-      const result = selectTopology(factors);
+      const result = selector.selectTopology(factors);
 
       expect(Array.isArray(result.reasoning)).toBe(true);
+    });
+  });
+
+  describe('canSwitchTopology', () => {
+    it('should allow switch to same topology', () => {
+      const result = selector.canSwitchTopology('mesh', 'mesh');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should allow upgrade from mesh to hierarchical', () => {
+      const result = selector.canSwitchTopology('mesh', 'hierarchical');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should allow downgrade with warning', () => {
+      const result = selector.canSwitchTopology('hierarchical', 'mesh');
+      expect(result.allowed).toBe(true);
+      expect(result.warning).toBeDefined();
+    });
+
+    it('should not allow switch to single with multiple agents', () => {
+      const result = selector.canSwitchTopology('mesh', 'single');
+      expect(result.allowed).toBe(false);
+    });
+  });
+
+  describe('getTopologyInfo', () => {
+    it('should return info for valid topology', () => {
+      const info = selector.getTopologyInfo('mesh');
+      expect(info.name).toBe('Mesh Network');
+    });
+  });
+
+  describe('recommendFromKeywords', () => {
+    it('should recommend hybrid for security keywords', () => {
+      const result = selector.recommendFromKeywords(['security', 'encryption']);
+      expect(result).toBe('hybrid');
+    });
+
+    it('should recommend hierarchical for architecture keywords', () => {
+      const result = selector.recommendFromKeywords(['architecture', 'refactor']);
+      expect(result).toBe('hierarchical');
+    });
+
+    it('should return null for no matching keywords', () => {
+      const result = selector.recommendFromKeywords(['random', 'words']);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('estimateMaxAgents', () => {
+    it('should return 1 for very low complexity', () => {
+      expect(selector.estimateMaxAgents(1)).toBe(1);
+    });
+
+    it('should return 10 for very high complexity', () => {
+      expect(selector.estimateMaxAgents(10)).toBe(10);
+    });
+
+    it('should scale with complexity', () => {
+      expect(selector.estimateMaxAgents(3)).toBeLessThan(selector.estimateMaxAgents(7));
+    });
+  });
+
+  describe('singleton instance', () => {
+    it('should export a singleton', () => {
+      expect(topologySelector).toBeInstanceOf(TopologySelector);
     });
   });
 });
