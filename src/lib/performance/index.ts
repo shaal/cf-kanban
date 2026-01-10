@@ -5,3 +5,4 @@
  */
 
 export * from './code-splitting';
+export * from './server-cache';

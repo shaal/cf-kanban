@@ -32,11 +32,17 @@ model Ticket {
   projectId   String
   project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  /// TASK-097: User assignment
+  assignedToId String?
+  assignedTo   User?          @relation("AssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
   history     TicketHistory[]
   questions   TicketQuestion[]
 
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+
+  @@index([assignedToId])
 }
 
 model TicketHistory {
@@ -154,14 +160,19 @@ enum UserRole {
   VIEWER   /// Read-only access
 }
 
-/// TASK-100-104: User model for authentication and authorization
+/// TASK-096/097: User model for authentication and authorization
+/// Compatible with Auth.js for OAuth providers
 model User {
   id             String          @id @default(cuid())
   email          String          @unique
   name           String?
   avatarUrl      String?
+  image          String?         /// Auth.js compatibility field
   role           UserRole        @default(MEMBER)
   isActive       Boolean         @default(true)
+
+  /// External auth provider ID (for Clerk or other providers)
+  externalId     String?         @unique
 
   /// Activity tracking
   lastLoginAt    DateTime?
@@ -172,8 +183,18 @@ model User {
   invitedAt      DateTime?
   acceptedAt     DateTime?
 
+  /// Auth.js required fields
+  emailVerified  DateTime?
+
+  /// Auth.js relations
+  accounts       Account[]
+  sessions       Session[]
+
   /// Project memberships
   projectMembers ProjectMember[]
+
+  /// Tickets assigned to this user
+  assignedTickets Ticket[]       @relation("AssignedTo")
 
   /// Audit logs created by this user
   auditLogs      AuditLog[]
@@ -183,6 +204,45 @@ model User {
 
   @@index([email])
   @@index([role])
+  @@index([externalId])
+}
+
+/// TASK-096: Auth.js Account model for OAuth providers
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+/// TASK-096: Auth.js Session model
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// TASK-096: Auth.js Verification Token for email verification
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
 }
 
 /// TASK-101: Project membership for per-project roles
