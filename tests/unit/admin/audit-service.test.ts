@@ -7,21 +7,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AuditAction } from '@prisma/client';
 
-// Mock Prisma
-const mockPrisma = {
-  auditLog: {
-    create: vi.fn(),
-    count: vi.fn(),
-    findMany: vi.fn()
-  }
-};
-
+// Mock Prisma - define mock functions inline in vi.mock
 vi.mock('$lib/server/prisma', () => ({
-  prisma: mockPrisma
+  prisma: {
+    auditLog: {
+      create: vi.fn(),
+      count: vi.fn(),
+      findMany: vi.fn()
+    }
+  }
 }));
 
 // Import after mocks
 import { AuditService, type AuditLogRequest } from '$lib/server/admin/audit-service';
+import { prisma } from '$lib/server/prisma';
+
+// Get references to mocked functions
+const mockPrisma = prisma as unknown as {
+  auditLog: {
+    create: ReturnType<typeof vi.fn>;
+    count: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+  };
+};
 
 describe('AuditService', () => {
   let service: AuditService;

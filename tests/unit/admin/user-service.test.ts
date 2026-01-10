@@ -8,27 +8,25 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { UserRole } from '@prisma/client';
 import type { UserWithActivity, InviteUserRequest } from '$lib/types/admin';
 
-// Mock Prisma
-const mockPrisma = {
-  user: {
-    count: vi.fn(),
-    findMany: vi.fn(),
-    findUnique: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn()
-  },
-  projectMember: {
-    createMany: vi.fn()
-  },
-  auditLog: {
-    create: vi.fn(),
-    findMany: vi.fn()
-  }
-};
-
+// Mock Prisma - define mock functions inline in vi.mock
 vi.mock('$lib/server/prisma', () => ({
-  prisma: mockPrisma
+  prisma: {
+    user: {
+      count: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn()
+    },
+    projectMember: {
+      createMany: vi.fn()
+    },
+    auditLog: {
+      create: vi.fn(),
+      findMany: vi.fn()
+    }
+  }
 }));
 
 // Mock audit service
@@ -40,6 +38,26 @@ vi.mock('$lib/server/admin/audit-service', () => ({
 
 // Import after mocks
 import { UserService } from '$lib/server/admin/user-service';
+import { prisma } from '$lib/server/prisma';
+
+// Get references to mocked functions
+const mockPrisma = prisma as unknown as {
+  user: {
+    count: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+    findUnique: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+  };
+  projectMember: {
+    createMany: ReturnType<typeof vi.fn>;
+  };
+  auditLog: {
+    create: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+  };
+};
 
 describe('UserService', () => {
   let service: UserService;
