@@ -6,3 +6,4 @@
 
 export * from './code-splitting';
 export * from './server-cache';
+export * from './query-optimization';

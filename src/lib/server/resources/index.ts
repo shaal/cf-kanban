@@ -7,3 +7,4 @@
 
 export * from './limits';
 export * from './usage';
+export * from './rate-limit';
