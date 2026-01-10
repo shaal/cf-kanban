@@ -1,6 +1,7 @@
 <script lang="ts">
   /**
    * TASK-019: Add Project Selector/Dashboard
+   * AMENDMENT-001: Added workspace path configuration
    *
    * Dashboard showing all projects with the ability to create new ones.
    */
@@ -8,13 +9,14 @@
   import { enhance } from '$app/forms';
   import Button from '$lib/components/ui/Button.svelte';
   import Card from '$lib/components/ui/Card.svelte';
-  import { Plus, FolderKanban, Ticket } from 'lucide-svelte';
+  import { Plus, FolderKanban, Ticket, Folder, Bot, Cpu, Brain, Zap, ChevronDown, ChevronUp } from 'lucide-svelte';
 
   export let data: PageData;
   export let form: ActionData;
 
   let showCreateForm = false;
   let isSubmitting = false;
+  let showCapabilities = true; // Show capabilities section by default for new users
 </script>
 
 <svelte:head>
@@ -59,8 +61,36 @@
               await update();
             };
           }}
-          class="space-y-4"
+          class="space-y-5"
         >
+          <!-- AMENDMENT-001: Workspace Path (First and Required) -->
+          <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <label for="workspace-path" class="block text-sm font-medium text-blue-900 mb-1">
+              <span class="flex items-center gap-2">
+                <Folder class="w-4 h-4" />
+                Codebase Folder <span class="text-red-500">*</span>
+              </span>
+            </label>
+            <p class="text-xs text-blue-700 mb-2">
+              The local folder where Claude Code will operate. This should be your project's root directory.
+            </p>
+            <input
+              type="text"
+              id="workspace-path"
+              name="workspacePath"
+              required
+              value={form?.workspacePath ?? ''}
+              disabled={isSubmitting}
+              class="w-full px-3 py-2 border border-blue-300 rounded-md text-sm font-mono
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                     disabled:opacity-50 bg-white"
+              placeholder="/Users/you/code/my-project"
+            />
+            <p class="text-xs text-blue-600 mt-1">
+              Example: /Users/dev/my-app or /home/dev/projects/api
+            </p>
+          </div>
+
           <div>
             <label for="project-name" class="block text-sm font-medium text-gray-700 mb-1">
               Project Name <span class="text-red-500">*</span>
@@ -94,6 +124,78 @@
                      disabled:opacity-50"
               placeholder="A brief description of your project..."
             ></textarea>
+          </div>
+
+          <!-- AMENDMENT-001: Claude Flow Capabilities Overview -->
+          <div class="border border-gray-200 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onclick={() => (showCapabilities = !showCapabilities)}
+              class="w-full px-4 py-3 bg-gray-50 flex items-center justify-between text-left hover:bg-gray-100 transition-colors"
+            >
+              <span class="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Bot class="w-4 h-4 text-purple-600" />
+                What can Claude Flow do for this project?
+              </span>
+              {#if showCapabilities}
+                <ChevronUp class="w-4 h-4 text-gray-500" />
+              {:else}
+                <ChevronDown class="w-4 h-4 text-gray-500" />
+              {/if}
+            </button>
+
+            {#if showCapabilities}
+              <div class="p-4 bg-white border-t border-gray-200">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="flex gap-3">
+                    <div class="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                      <Bot class="w-4 h-4 text-purple-600" />
+                    </div>
+                    <div>
+                      <h4 class="text-sm font-medium text-gray-900">60+ Specialized Agents</h4>
+                      <p class="text-xs text-gray-500">Coder, Tester, Security Architect, Reviewer, and more work on your tickets</p>
+                    </div>
+                  </div>
+
+                  <div class="flex gap-3">
+                    <div class="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <Cpu class="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <h4 class="text-sm font-medium text-gray-900">Swarm Orchestration</h4>
+                      <p class="text-xs text-gray-500">Multiple agents collaborate on complex tasks with different topologies</p>
+                    </div>
+                  </div>
+
+                  <div class="flex gap-3">
+                    <div class="flex-shrink-0 w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                      <Brain class="w-4 h-4 text-green-600" />
+                    </div>
+                    <div>
+                      <h4 class="text-sm font-medium text-gray-900">Learning & Memory</h4>
+                      <p class="text-xs text-gray-500">Patterns are learned from successes and reused across tasks</p>
+                    </div>
+                  </div>
+
+                  <div class="flex gap-3">
+                    <div class="flex-shrink-0 w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                      <Zap class="w-4 h-4 text-orange-600" />
+                    </div>
+                    <div>
+                      <h4 class="text-sm font-medium text-gray-900">12 Background Workers</h4>
+                      <p class="text-xs text-gray-500">Security audits, test gap analysis, performance optimization run automatically</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                  <p class="text-xs text-amber-800">
+                    <strong>How it works:</strong> Create tickets describing what you need → Drag to "In Progress" →
+                    Agents spawn and execute the work in your codebase folder → Review and approve the results.
+                  </p>
+                </div>
+              </div>
+            {/if}
           </div>
 
           <div class="flex gap-2">
@@ -137,7 +239,21 @@
                       {project.description}
                     </p>
                   {/if}
-                  <div class="flex items-center gap-1 mt-3 text-xs text-gray-400">
+                  <!-- AMENDMENT-001: Display workspace path -->
+                  {#if project.workspacePath}
+                    <div class="flex items-center gap-1 mt-2 text-xs text-gray-400">
+                      <Folder class="w-3 h-3 flex-shrink-0" />
+                      <span class="font-mono truncate" title={project.workspacePath}>
+                        {project.workspacePath}
+                      </span>
+                    </div>
+                  {:else}
+                    <div class="flex items-center gap-1 mt-2 text-xs text-amber-500">
+                      <Folder class="w-3 h-3 flex-shrink-0" />
+                      <span>No folder configured</span>
+                    </div>
+                  {/if}
+                  <div class="flex items-center gap-1 mt-1 text-xs text-gray-400">
                     <Ticket class="w-3.5 h-3.5" />
                     <span>{project._count.tickets} ticket{project._count.tickets !== 1 ? 's' : ''}</span>
                   </div>

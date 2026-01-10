@@ -11,12 +11,19 @@ model Project {
   id          String          @id @default(cuid())
   name        String
   description String?
+
+  /// AMENDMENT-001: Workspace path where Claude Code operates
+  /// This is the local filesystem folder for the project's codebase
+  workspacePath String?
+
   settings    Json            @default("{}")
   isArchived  Boolean         @default(false)
   tickets     Ticket[]
   members     ProjectMember[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
+
+  @@index([workspacePath])
 }
 
 model Ticket {
