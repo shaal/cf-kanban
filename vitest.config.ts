@@ -14,7 +14,9 @@ export default defineConfig({
 		alias: {
 			'$lib': path.resolve(__dirname, './src/lib'),
 			'$app/environment': path.resolve(__dirname, './tests/mocks/app-environment.ts'),
-			'$app': path.resolve(__dirname, './.svelte-kit/runtime/app')
+			'$app': path.resolve(__dirname, './.svelte-kit/runtime/app'),
+			'$env/dynamic/private': path.resolve(__dirname, './tests/mocks/env.ts'),
+			'$env/dynamic/public': path.resolve(__dirname, './tests/mocks/env.ts')
 		}
 	}
 });
