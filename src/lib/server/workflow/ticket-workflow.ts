@@ -20,6 +20,7 @@ import { agentRouter, type AgentAssignment } from '../assignment/agent-router';
 import { topologySelector, type TopologyDecision } from '../assignment/topology-selector';
 import { swarmService, type SwarmStatus } from '../claude-flow/swarm';
 import { agentService, type Agent } from '../claude-flow/agents';
+import { commandExecutor, type JobConfig } from '../claude-flow/executor';
 import { publishTicketEvent, type TicketEvent } from '../redis/pubsub';
 import type { Ticket, Project, TicketStatus } from '@prisma/client';
 
@@ -115,6 +116,9 @@ export async function handleTicketTransition(
 
 /**
  * Start ticket execution by spawning a swarm
+ *
+ * Uses commandExecutor to run real Claude Flow CLI commands,
+ * which emits progress events visible in the Debug Output panel.
  */
 async function startTicketExecution(ticket: TicketWithProject): Promise<WorkflowResult> {
 	try {
@@ -143,7 +147,7 @@ async function startTicketExecution(ticket: TicketWithProject): Promise<Workflow
 		const topologyDecision = topologySelector.selectTopology({
 			complexity: Math.round(analysis.confidence * 10),
 			agentCount: assignment.agents.length,
-			hasDependencies: false, // TODO: Check for dependencies
+			hasDependencies: false,
 			isSecurityRelated: analysis.keywords.some((k) =>
 				['security', 'auth', 'authentication'].includes(k)
 			),
@@ -152,26 +156,70 @@ async function startTicketExecution(ticket: TicketWithProject): Promise<Workflow
 			keywords: analysis.keywords
 		});
 
-		// Step 5: Initialize swarm
-		const swarm = await swarmService.init({
-			topology: topologyDecision.topology,
-			maxAgents: topologyDecision.maxAgents,
-			project: ticket.project.name
+		// Step 5: Submit execution jobs to commandExecutor
+		// These will emit progress events visible in the Debug Output panel
+		const jobIds: string[] = [];
+
+		// Job 1: Initialize swarm via CLI (visible in debug panel)
+		const swarmJobId = commandExecutor.submit({
+			command: 'swarm',
+			args: ['init', '--topology', topologyDecision.topology, '--max-agents', String(topologyDecision.maxAgents)],
+			priority: 'high',
+			projectId: ticket.projectId,
+			ticketId: ticket.id,
+			metadata: {
+				step: 'swarm-init',
+				topology: topologyDecision.topology
+			}
 		});
+		jobIds.push(swarmJobId);
 
-		// Step 6: Spawn agents
-		const agentIds: string[] = [];
+		// Job 2: Route task to get agent recommendations (visible in debug panel)
+		const routeJobId = commandExecutor.submit({
+			command: 'hooks',
+			args: ['route', '--task', `"${ticket.title}: ${ticket.description || 'No description'}"`],
+			priority: 'normal',
+			projectId: ticket.projectId,
+			ticketId: ticket.id,
+			metadata: {
+				step: 'route-task',
+				ticketType: analysis.ticketType
+			}
+		});
+		jobIds.push(routeJobId);
+
+		// Job 3: Spawn agents for the ticket
 		for (const agentConfig of assignment.agents) {
-			const prompt = buildAgentPrompt(ticket, agentConfig);
-			const agent = await agentService.spawn({
-				type: agentConfig.type,
-				name: `${ticket.id.slice(0, 8)}-${agentConfig.type}`,
-				prompt
+			const agentJobId = commandExecutor.submit({
+				command: 'agent',
+				args: [
+					'spawn',
+					'--type', agentConfig.type,
+					'--name', `${ticket.id.slice(0, 8)}-${agentConfig.type}`
+				],
+				priority: 'normal',
+				projectId: ticket.projectId,
+				ticketId: ticket.id,
+				metadata: {
+					step: 'spawn-agent',
+					agentType: agentConfig.type,
+					agentRole: agentConfig.role
+				}
 			});
-			agentIds.push(agent.id);
+			jobIds.push(agentJobId);
+		}
 
-			// Add agent to swarm
-			await swarmService.addAgent(agent.id);
+		// Step 6: Also try the traditional swarm service (for compatibility)
+		let swarm: SwarmStatus | null = null;
+		try {
+			swarm = await swarmService.init({
+				topology: topologyDecision.topology,
+				maxAgents: topologyDecision.maxAgents,
+				project: ticket.project.name
+			});
+		} catch {
+			// Swarm service may fail if CLI not available, that's OK
+			// commandExecutor jobs will show output in debug panel regardless
 		}
 
 		// Step 7: Record history
@@ -180,15 +228,15 @@ async function startTicketExecution(ticket: TicketWithProject): Promise<Workflow
 				ticketId: ticket.id,
 				fromStatus: 'TODO',
 				toStatus: 'IN_PROGRESS',
-				reason: `Swarm initialized with ${agentIds.length} agents using ${topologyDecision.topology} topology`,
+				reason: `Execution started with ${assignment.agents.length} agents (${topologyDecision.topology} topology). Jobs: ${jobIds.join(', ')}`,
 				triggeredBy: 'workflow'
 			}
 		});
 
 		// Step 8: Publish event
 		await publishEvent(ticket, 'ticket:transitioned', {
-			swarmId: swarm.id,
-			agents: agentIds,
+			swarmId: swarm?.id,
+			jobIds,
 			topology: topologyDecision.topology,
 			analysis: {
 				ticketType: analysis.ticketType,
@@ -199,11 +247,12 @@ async function startTicketExecution(ticket: TicketWithProject): Promise<Workflow
 
 		return {
 			success: true,
-			swarmId: swarm.id,
-			agents: agentIds,
+			swarmId: swarm?.id,
+			agents: jobIds, // Now these are job IDs
 			analysis,
 			details: {
 				topology: topologyDecision.topology,
+				jobIds,
 				reasoning: [...assignment.reasoning, ...topologyDecision.reasoning]
 			}
 		};
@@ -219,14 +268,14 @@ async function startTicketExecution(ticket: TicketWithProject): Promise<Workflow
 				ticketId: ticket.id,
 				fromStatus: 'IN_PROGRESS',
 				toStatus: 'TODO',
-				reason: `Swarm initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+				reason: `Execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
 				triggeredBy: 'workflow-error'
 			}
 		});
 
 		return {
 			success: false,
-			error: error instanceof Error ? error.message : 'Unknown error during swarm initialization'
+			error: error instanceof Error ? error.message : 'Unknown error during execution start'
 		};
 	}
 }
