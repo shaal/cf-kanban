@@ -21,6 +21,7 @@ import { topologySelector, type TopologyDecision } from '../assignment/topology-
 import { swarmService, type SwarmStatus } from '../claude-flow/swarm';
 import { agentService, type Agent } from '../claude-flow/agents';
 import { commandExecutor, type JobConfig } from '../claude-flow/executor';
+import { startTracking } from './job-completion-tracker';
 import { publishTicketEvent, type TicketEvent } from '../redis/pubsub';
 import type { Ticket, Project, TicketStatus } from '@prisma/client';
 
@@ -209,7 +210,11 @@ async function startTicketExecution(ticket: TicketWithProject): Promise<Workflow
 			jobIds.push(agentJobId);
 		}
 
-		// Step 6: Also try the traditional swarm service (for compatibility)
+		// Step 6: Start tracking job completion for auto-transition
+		// When all jobs complete → REVIEW, if any fail → NEEDS_FEEDBACK
+		startTracking(ticket.id, ticket.projectId, jobIds);
+
+		// Step 7: Also try the traditional swarm service (for compatibility)
 		let swarm: SwarmStatus | null = null;
 		try {
 			swarm = await swarmService.init({
@@ -222,7 +227,7 @@ async function startTicketExecution(ticket: TicketWithProject): Promise<Workflow
 			// commandExecutor jobs will show output in debug panel regardless
 		}
 
-		// Step 7: Record history
+		// Step 8: Record history
 		await prisma.ticketHistory.create({
 			data: {
 				ticketId: ticket.id,
@@ -233,7 +238,7 @@ async function startTicketExecution(ticket: TicketWithProject): Promise<Workflow
 			}
 		});
 
-		// Step 8: Publish event
+		// Step 9: Publish event
 		await publishEvent(ticket, 'ticket:transitioned', {
 			swarmId: swarm?.id,
 			jobIds,
