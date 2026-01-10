@@ -1,14 +1,28 @@
 /**
  * TASK-080/081/082/083: Memory Service for Claude Flow
+ * GAP-ROAD.1: Redis caching integration
  *
  * Provides a wrapper around Claude Flow CLI memory commands for:
  * - Listing namespaces and entries
  * - Searching memory with semantic queries
  * - Storing and retrieving memory entries
  * - Managing memory lifecycle
+ *
+ * Now includes Redis caching for improved performance.
  */
 
 import { claudeFlowCLI } from './cli';
+import {
+	cacheMemorySearch,
+	getMemorySearch,
+	cacheMemoryEntry,
+	getMemoryEntry,
+	invalidateMemoryEntry,
+	invalidateMemorySearchCache,
+	type CachedMemoryEntry,
+	type CachedMemorySearchResult
+} from '$lib/server/redis/cache';
+import { publishMemoryEvent } from '$lib/server/redis/pubsub';
 
 /**
  * Represents a memory entry from Claude Flow
@@ -167,9 +181,31 @@ export class MemoryService {
 	}
 
 	/**
-	 * Retrieve a specific entry by key
+	 * GAP-ROAD.1: Retrieve a specific entry by key (with caching)
 	 */
 	async retrieve(key: string, namespace?: string): Promise<MemoryEntry | null> {
+		const ns = namespace || 'default';
+
+		// Try cache first
+		const cached = await getMemoryEntry(key, ns);
+		if (cached) {
+			await publishMemoryEvent({
+				type: 'memory:retrieved',
+				key,
+				namespace: ns,
+				data: { cached: true }
+			});
+			return {
+				key: cached.key,
+				value: cached.value,
+				namespace: cached.namespace,
+				metadata: cached.metadata,
+				tags: cached.tags,
+				createdAt: cached.createdAt,
+				updatedAt: cached.updatedAt
+			};
+		}
+
 		const args: string[] = ['retrieve', '--key', key];
 
 		if (namespace) {
@@ -183,20 +219,41 @@ export class MemoryService {
 				value?: string;
 			}>('memory', args);
 
-			if (result.entry) {
-				return result.entry;
-			}
+			let entry: MemoryEntry | null = null;
 
-			// Handle flat response format
-			if (result.key && result.value) {
-				return {
+			if (result.entry) {
+				entry = result.entry;
+			} else if (result.key && result.value) {
+				// Handle flat response format
+				entry = {
 					key: result.key,
 					value: result.value,
-					namespace: namespace || 'default'
+					namespace: ns
 				};
 			}
 
-			return null;
+			// Cache for future requests
+			if (entry) {
+				const cachedEntry: CachedMemoryEntry = {
+					key: entry.key,
+					value: entry.value,
+					namespace: entry.namespace,
+					metadata: entry.metadata,
+					tags: entry.tags,
+					createdAt: entry.createdAt,
+					updatedAt: entry.updatedAt
+				};
+				await cacheMemoryEntry(cachedEntry);
+
+				await publishMemoryEvent({
+					type: 'memory:retrieved',
+					key,
+					namespace: ns,
+					data: { cached: false }
+				});
+			}
+
+			return entry;
 		} catch (error) {
 			if (error instanceof Error && error.message.includes('not found')) {
 				return null;
@@ -206,9 +263,26 @@ export class MemoryService {
 	}
 
 	/**
-	 * Search memory with semantic query
+	 * GAP-ROAD.1: Search memory with semantic query (with caching)
 	 */
 	async search(query: string, options: SearchOptions = {}): Promise<MemorySearchResult> {
+		// Try cache first
+		const cached = await getMemorySearch(query, options.namespace, options.limit);
+		if (cached) {
+			await publishMemoryEvent({
+				type: 'memory:searched',
+				query,
+				namespace: options.namespace,
+				data: { cached: true, count: cached.totalFound }
+			});
+			return {
+				entries: cached.entries,
+				query: cached.query,
+				namespace: cached.namespace,
+				totalFound: cached.totalFound
+			};
+		}
+
 		const args: string[] = ['search', '--query', query];
 
 		if (options.namespace) {
@@ -231,12 +305,40 @@ export class MemoryService {
 
 			const entries = result.entries || result.results || [];
 
-			return {
+			const searchResult: MemorySearchResult = {
 				entries,
 				query,
 				namespace: options.namespace,
 				totalFound: result.totalFound || entries.length
 			};
+
+			// Cache the result
+			const cacheResult: CachedMemorySearchResult = {
+				entries: entries.map(e => ({
+					key: e.key,
+					value: e.value,
+					namespace: e.namespace,
+					metadata: e.metadata,
+					tags: e.tags,
+					similarity: e.similarity,
+					createdAt: e.createdAt,
+					updatedAt: e.updatedAt
+				})),
+				query,
+				namespace: options.namespace,
+				totalFound: searchResult.totalFound,
+				cachedAt: Date.now()
+			};
+			await cacheMemorySearch(query, cacheResult, options.namespace, options.limit);
+
+			await publishMemoryEvent({
+				type: 'memory:searched',
+				query,
+				namespace: options.namespace,
+				data: { cached: false, count: searchResult.totalFound }
+			});
+
+			return searchResult;
 		} catch (error) {
 			if (error instanceof Error && error.message.includes('no results')) {
 				return {
@@ -251,7 +353,7 @@ export class MemoryService {
 	}
 
 	/**
-	 * Store a new memory entry
+	 * GAP-ROAD.1: Store a new memory entry (with cache invalidation)
 	 */
 	async store(
 		key: string,
@@ -276,21 +378,47 @@ export class MemoryService {
 			key?: string;
 		}>('memory', args);
 
+		let entry: MemoryEntry;
 		if (result.entry) {
-			return result.entry;
+			entry = result.entry;
+		} else {
+			// Construct entry from response
+			entry = {
+				key,
+				value,
+				namespace: options.namespace || 'default',
+				tags: options.tags
+			};
 		}
 
-		// Construct entry from response
-		return {
-			key,
-			value,
-			namespace: options.namespace || 'default',
-			tags: options.tags
+		// Cache the new entry
+		const cachedEntry: CachedMemoryEntry = {
+			key: entry.key,
+			value: entry.value,
+			namespace: entry.namespace,
+			metadata: entry.metadata,
+			tags: entry.tags,
+			createdAt: entry.createdAt,
+			updatedAt: entry.updatedAt
 		};
+		await cacheMemoryEntry(cachedEntry);
+
+		// Invalidate search cache since data changed
+		await invalidateMemorySearchCache();
+
+		// Publish event
+		await publishMemoryEvent({
+			type: 'memory:stored',
+			key,
+			namespace: options.namespace,
+			data: { tags: options.tags }
+		});
+
+		return entry;
 	}
 
 	/**
-	 * Delete a memory entry
+	 * GAP-ROAD.1: Delete a memory entry (with cache invalidation)
 	 */
 	async delete(key: string, namespace?: string): Promise<boolean> {
 		const args: string[] = ['delete', '--key', key];
@@ -301,7 +429,21 @@ export class MemoryService {
 
 		try {
 			const result = await claudeFlowCLI.execute('memory', args);
-			return result.exitCode === 0;
+			const success = result.exitCode === 0;
+
+			if (success) {
+				// Invalidate cache
+				await invalidateMemoryEntry(key, namespace || 'default');
+
+				// Publish event
+				await publishMemoryEvent({
+					type: 'memory:deleted',
+					key,
+					namespace
+				});
+			}
+
+			return success;
 		} catch {
 			return false;
 		}

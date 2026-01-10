@@ -2,9 +2,11 @@
  * Pattern Service
  *
  * TASK-071: Pattern Explorer Page
+ * GAP-ROAD.1: Redis caching integration
  *
  * Service for fetching and managing patterns from Claude Flow memory.
  * Integrates with the Claude Flow CLI to retrieve learned patterns.
+ * Now includes Redis caching for improved performance.
  */
 
 import { claudeFlowCLI } from '../claude-flow/cli';
@@ -16,6 +18,17 @@ import type {
   PatternLink,
   DOMAIN_CONFIGS
 } from '$lib/types/patterns';
+import {
+  cachePatternList,
+  getPatternListIds,
+  getPatterns as getCachedPatterns,
+  getPattern as getCachedPattern,
+  cachePattern,
+  invalidatePatternList,
+  invalidatePattern,
+  type CachedPattern
+} from '$lib/server/redis/cache';
+import { publishPatternEvent } from '$lib/server/redis/pubsub';
 
 /**
  * Raw pattern data from Claude Flow memory
@@ -143,21 +156,100 @@ function formatPatternName(key: string): string {
  */
 export class PatternService {
   /**
-   * Fetch all patterns from Claude Flow memory
+   * GAP-ROAD.1: Fetch all patterns with Redis caching
+   * First tries to get from cache, falls back to Claude Flow CLI
    */
   async fetchPatterns(namespace = 'patterns'): Promise<Pattern[]> {
     try {
+      // Try to get from cache first
+      const cachedIds = await getPatternListIds(namespace);
+      if (cachedIds && cachedIds.length > 0) {
+        const cachedPatterns = await getCachedPatterns(cachedIds);
+        const validPatterns = cachedPatterns.filter((p): p is CachedPattern => p !== null);
+
+        if (validPatterns.length > 0) {
+          // Publish cache hit event
+          await publishPatternEvent({
+            type: 'pattern:cache_hit',
+            patternId: 'list',
+            namespace,
+            data: { count: validPatterns.length }
+          });
+
+          // Convert cached patterns to Pattern type
+          return validPatterns.map(p => this.cachedToPattern(p));
+        }
+      }
+
+      // Publish cache miss event
+      await publishPatternEvent({
+        type: 'pattern:cache_miss',
+        patternId: 'list',
+        namespace
+      });
+
+      // Fetch from Claude Flow CLI
       const result = await claudeFlowCLI.executeJson<MemorySearchResult>(
         'memory',
         ['list', '--namespace', namespace, '--limit', '1000']
       );
 
-      return (result.entries || []).map((entry, index) => toPattern(entry, index));
+      const patterns = (result.entries || []).map((entry, index) => toPattern(entry, index));
+
+      // Cache the results
+      if (patterns.length > 0) {
+        const cachedPatterns: CachedPattern[] = patterns.map(p => this.patternToCached(p));
+        await cachePatternList(namespace, cachedPatterns);
+      }
+
+      return patterns;
     } catch (error) {
       console.error('Failed to fetch patterns from Claude Flow:', error);
       // Return mock data for development/testing
       return this.getMockPatterns();
     }
+  }
+
+  /**
+   * GAP-ROAD.1: Convert Pattern to CachedPattern
+   */
+  private patternToCached(pattern: Pattern): CachedPattern {
+    return {
+      id: pattern.id,
+      key: pattern.key,
+      name: pattern.name,
+      value: pattern.value,
+      namespace: pattern.namespace,
+      domain: pattern.domain,
+      successRate: pattern.successRate,
+      usageCount: pattern.usageCount,
+      tags: pattern.tags,
+      createdAt: pattern.createdAt instanceof Date ? pattern.createdAt.toISOString() : pattern.createdAt,
+      updatedAt: pattern.updatedAt instanceof Date ? pattern.updatedAt.toISOString() : pattern.updatedAt,
+      metadata: pattern.metadata,
+      relatedPatternIds: pattern.relatedPatternIds
+    };
+  }
+
+  /**
+   * GAP-ROAD.1: Convert CachedPattern to Pattern
+   */
+  private cachedToPattern(cached: CachedPattern): Pattern {
+    return {
+      id: cached.id,
+      key: cached.key,
+      name: cached.name,
+      value: cached.value,
+      namespace: cached.namespace,
+      domain: cached.domain as PatternDomain,
+      successRate: cached.successRate,
+      usageCount: cached.usageCount,
+      tags: cached.tags || [],
+      createdAt: cached.createdAt ? new Date(cached.createdAt as string) : new Date(),
+      updatedAt: cached.updatedAt ? new Date(cached.updatedAt as string) : new Date(),
+      metadata: (cached.metadata as Record<string, unknown>) || {},
+      relatedPatternIds: (cached.relatedPatternIds as string[]) || []
+    };
   }
 
   /**
@@ -178,22 +270,65 @@ export class PatternService {
   }
 
   /**
-   * Get pattern by ID
+   * GAP-ROAD.1: Get pattern by ID with caching
    */
   async getPattern(id: string, namespace = 'patterns'): Promise<Pattern | null> {
     try {
+      // Try cache first
+      const cached = await getCachedPattern(id);
+      if (cached) {
+        await publishPatternEvent({
+          type: 'pattern:cache_hit',
+          patternId: id,
+          namespace
+        });
+        return this.cachedToPattern(cached);
+      }
+
+      await publishPatternEvent({
+        type: 'pattern:cache_miss',
+        patternId: id,
+        namespace
+      });
+
+      // Fetch from CLI
       const result = await claudeFlowCLI.executeJson<RawMemoryEntry>(
         'memory',
         ['retrieve', '--key', id, '--namespace', namespace]
       );
 
       if (result) {
-        return toPattern(result, 0);
+        const pattern = toPattern(result, 0);
+        // Cache for future requests
+        await cachePattern(this.patternToCached(pattern));
+        return pattern;
       }
       return null;
     } catch (error) {
       console.error('Failed to get pattern:', error);
       return null;
+    }
+  }
+
+  /**
+   * GAP-ROAD.1: Invalidate pattern cache
+   * Call this when patterns are updated
+   */
+  async invalidatePatternCache(patternId?: string, namespace = 'patterns'): Promise<void> {
+    if (patternId) {
+      await invalidatePattern(patternId);
+      await publishPatternEvent({
+        type: 'pattern:updated',
+        patternId,
+        namespace
+      });
+    } else {
+      await invalidatePatternList(namespace);
+      await publishPatternEvent({
+        type: 'pattern:updated',
+        patternId: 'all',
+        namespace
+      });
     }
   }
 
