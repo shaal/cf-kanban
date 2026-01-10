@@ -272,7 +272,7 @@ export class PatternService {
    * Convert patterns to graph data for ForceGraph
    */
   toGraphData(patterns: Pattern[]): { nodes: PatternNode[]; links: PatternLink[] } {
-    const domainConfigs = await import('$lib/types/patterns').then(m => m.DOMAIN_CONFIGS);
+    // Use getDomainColor function instead of importing
 
     const nodes: PatternNode[] = patterns.map(pattern => ({
       id: pattern.id,
