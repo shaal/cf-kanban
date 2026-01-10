@@ -134,3 +134,8 @@ export * from './neural';
  * TASK-084/085/086/087: Re-export transfer types
  */
 export * from './transfer';
+
+/**
+ * GAP-3.3.3: Re-export ticket-agent assignment types
+ */
+export * from './ticket-agents';

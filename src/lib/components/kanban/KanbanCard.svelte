@@ -3,17 +3,20 @@
    * KanbanCard component - Draggable ticket card
    *
    * TASK-013: Create KanbanCard Component
+   * GAP-3.3.3: Agent Status on Ticket Cards
    *
    * Features:
    * - Displays ticket title, description (truncated), priority badge, and labels
    * - Visual states: normal, dragging (opacity-50)
    * - Uses GripVertical icon for drag handle indication
    * - Priority color coding
+   * - Agent status indicators for assigned agents (GAP-3.3.3)
    */
   import { GripVertical } from 'lucide-svelte';
   import { Badge } from '../ui';
   import { cn } from '$lib/utils';
   import type { Ticket, Priority } from '$lib/types';
+  import TicketAgentsDisplay from './TicketAgentsDisplay.svelte';
 
   interface Props {
     ticket: Ticket;
@@ -103,6 +106,9 @@
             {label}
           </Badge>
         {/each}
+
+        <!-- Agent status display (GAP-3.3.3) -->
+        <TicketAgentsDisplay ticketId={ticket.id} size="xs" />
       </div>
     </div>
   </div>
