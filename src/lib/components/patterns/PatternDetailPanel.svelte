@@ -1,20 +1,22 @@
 <script lang="ts">
   /**
    * TASK-074: Pattern Detail Panel
+   * GAP-3.4.4: Added transfer action for cross-project pattern transfer
    *
    * Displays detailed information about a selected pattern including:
    * - Pattern metadata (name, namespace, dates)
    * - Success rate history as sparkline
    * - Related patterns based on HNSW similarity
-   * - Action buttons
+   * - Action buttons including transfer to project
    */
   import type { Pattern } from '$lib/types/patterns';
   import { DOMAIN_CONFIGS } from '$lib/types/patterns';
   import Card from '$lib/components/ui/Card.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import PatternTransferModal from './PatternTransferModal.svelte';
   import {
     X, Calendar, Hash, TrendingUp, Clock, Tag, Link2,
-    Copy, ExternalLink, Ticket
+    Copy, ExternalLink, Ticket, ArrowRightLeft
   } from 'lucide-svelte';
 
   interface Props {
@@ -25,6 +27,25 @@
   }
 
   let { pattern, relatedPatterns = [], onClose, onPatternSelect }: Props = $props();
+
+  // GAP-3.4.4: Transfer modal state
+  let showTransferModal = $state(false);
+
+  function openTransferModal() {
+    showTransferModal = true;
+  }
+
+  function closeTransferModal() {
+    showTransferModal = false;
+  }
+
+  function handleTransferComplete(result: { success: boolean; transferId: string; targetPatternId?: string }) {
+    if (result.success) {
+      // Could show a toast notification here
+      console.log('Transfer completed:', result.transferId);
+    }
+    closeTransferModal();
+  }
 
   // Format date for display
   function formatDate(date: Date): string {
@@ -241,12 +262,26 @@
       <Ticket class="w-4 h-4 mr-2" />
       Apply to Ticket
     </Button>
+    <!-- GAP-3.4.4: Transfer to Project action -->
+    <Button variant="outline" class="w-full" onclick={openTransferModal}>
+      <ArrowRightLeft class="w-4 h-4 mr-2" />
+      Transfer to Project
+    </Button>
     <Button variant="outline" class="w-full" onclick={copyToClipboard}>
       <Copy class="w-4 h-4 mr-2" />
       Copy Pattern
     </Button>
   </div>
 </div>
+
+<!-- GAP-3.4.4: Transfer Modal -->
+{#if showTransferModal}
+  <PatternTransferModal
+    {pattern}
+    onClose={closeTransferModal}
+    onTransferComplete={handleTransferComplete}
+  />
+{/if}
 
 <style>
   .line-clamp-1 {

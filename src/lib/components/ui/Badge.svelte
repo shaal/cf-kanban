@@ -13,12 +13,16 @@
   interface Props {
     variant?: Variant;
     class?: string;
+    style?: string;
+    onclick?: (event: MouseEvent) => void;
     children?: import('svelte').Snippet;
   }
 
   let {
     variant = 'default',
     class: className = '',
+    style = '',
+    onclick,
     children
   }: Props = $props();
 
@@ -38,6 +42,10 @@
     variants[variant],
     className
   )}
+  {style}
+  {onclick}
+  role={onclick ? 'button' : undefined}
+  tabindex={onclick ? 0 : undefined}
 >
   {#if children}
     {@render children()}

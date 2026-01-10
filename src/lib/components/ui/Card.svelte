@@ -10,11 +10,13 @@
 
   interface Props {
     class?: string;
+    style?: string;
     children?: import('svelte').Snippet;
   }
 
   let {
     class: className = '',
+    style = '',
     children
   }: Props = $props();
 </script>
@@ -24,6 +26,7 @@
     'rounded-lg border border-gray-200 bg-white shadow-sm',
     className
   )}
+  {style}
 >
   {#if children}
     {@render children()}

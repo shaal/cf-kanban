@@ -171,3 +171,8 @@ export * from './ticket-agents';
  * GAP-3.1.2: Re-export resource allocation types
  */
 export * from './resources';
+
+/**
+ * GAP-UX.2: Re-export time travel types
+ */
+export * from './time-travel';

@@ -294,6 +294,18 @@ model User {
   /// Audit logs created by this user
   auditLogs      AuditLog[]
 
+  /// GAP-3.5.1: Notification preferences
+  notificationPreferences NotificationPreference[]
+
+  /// GAP-3.5.1: In-app notifications
+  notifications           Notification[]
+
+  /// GAP-3.5.1: Email digest settings
+  emailDigestSettings     EmailDigestSettings?
+
+  /// GAP-3.5.1: Webhook configurations
+  webhooks                WebhookConfig[]
+
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -464,4 +476,206 @@ model SystemSettings {
 
   @@index([category])
   @@index([key])
+}
+
+/// GAP-3.5.1: Notification event types for categorizing notifications
+enum NotificationEventType {
+  /// Ticket events
+  TICKET_ASSIGNED
+  TICKET_STATUS_CHANGED
+  TICKET_MENTIONED
+  TICKET_COMPLETED
+  TICKET_COMMENT
+
+  /// Project events
+  PROJECT_MEMBER_ADDED
+  PROJECT_MEMBER_REMOVED
+  PROJECT_ARCHIVED
+
+  /// Agent events
+  AGENT_QUESTION
+  AGENT_COMPLETED
+  AGENT_FAILED
+  AGENT_STARTED
+
+  /// System events
+  SYSTEM_ALERT
+  SYSTEM_ANNOUNCEMENT
+  HEALTH_DEGRADED
+  HEALTH_RECOVERED
+}
+
+/// GAP-3.5.1: Notification delivery channel types
+enum NotificationChannel {
+  IN_APP        /// In-app notification center
+  EMAIL         /// Email notifications
+  EMAIL_DIGEST  /// Batched email digest
+  WEBHOOK       /// Webhook delivery
+}
+
+/// GAP-3.5.1: Notification preference per user
+/// Controls which notifications a user receives and how they receive them
+model NotificationPreference {
+  id              String   @id @default(cuid())
+
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Event type this preference applies to
+  eventType       NotificationEventType
+
+  /// Delivery channels enabled for this event type
+  channels        NotificationChannel[]
+
+  /// Whether this notification type is enabled at all
+  enabled         Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, eventType])
+  @@index([userId])
+}
+
+/// GAP-3.5.1: In-app notification for users
+/// Stores notifications to be displayed in the notification center
+model Notification {
+  id              String   @id @default(cuid())
+
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Event type for categorization
+  eventType       NotificationEventType
+
+  /// Notification title
+  title           String
+
+  /// Notification message/body
+  message         String
+
+  /// Whether the notification has been read
+  read            Boolean  @default(false)
+
+  /// When the notification was read
+  readAt          DateTime?
+
+  /// Related entity type (Ticket, Project, etc.)
+  entityType      String?
+
+  /// Related entity ID for navigation
+  entityId        String?
+
+  /// Additional metadata (context, actor info, etc.)
+  metadata        Json     @default("{}")
+
+  /// When the notification was created
+  createdAt       DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+}
+
+/// GAP-3.5.1: Email digest settings per user
+/// Controls email digest frequency and preferences
+model EmailDigestSettings {
+  id              String   @id @default(cuid())
+
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Whether email digests are enabled
+  enabled         Boolean  @default(false)
+
+  /// Digest frequency: daily, weekly
+  frequency       String   @default("daily")
+
+  /// Preferred time to receive digest (hour in UTC, 0-23)
+  preferredHour   Int      @default(9)
+
+  /// For weekly digest: preferred day (0=Sunday, 6=Saturday)
+  preferredDay    Int      @default(1)
+
+  /// Last time a digest was sent
+  lastSentAt      DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+/// GAP-3.5.1: Webhook configuration for notification delivery
+/// Allows users to configure external webhooks for notifications
+model WebhookConfig {
+  id              String   @id @default(cuid())
+
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Webhook name for identification
+  name            String
+
+  /// Webhook URL to send notifications to
+  url             String
+
+  /// Secret for HMAC signature verification
+  secret          String?
+
+  /// Event types this webhook should receive
+  eventTypes      NotificationEventType[]
+
+  /// Whether the webhook is active
+  enabled         Boolean  @default(true)
+
+  /// Last successful delivery timestamp
+  lastSuccessAt   DateTime?
+
+  /// Number of consecutive failures
+  failureCount    Int      @default(0)
+
+  /// Whether webhook is paused due to failures
+  isPaused        Boolean  @default(false)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  /// Delivery logs
+  deliveryLogs    WebhookDeliveryLog[]
+
+  @@index([userId])
+  @@index([enabled, isPaused])
+}
+
+/// GAP-3.5.1: Webhook delivery log for auditing and debugging
+model WebhookDeliveryLog {
+  id              String   @id @default(cuid())
+
+  webhookId       String
+  webhook         WebhookConfig @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  /// Event type that triggered the delivery
+  eventType       NotificationEventType
+
+  /// HTTP response status code (null if request failed)
+  statusCode      Int?
+
+  /// Whether delivery was successful
+  success         Boolean
+
+  /// Error message if delivery failed
+  errorMessage    String?
+
+  /// Response body (truncated)
+  responseBody    String?
+
+  /// Request duration in milliseconds
+  durationMs      Int?
+
+  /// Payload that was sent
+  payload         Json
+
+  createdAt       DateTime @default(now())
+
+  @@index([webhookId])
+  @@index([createdAt])
 }

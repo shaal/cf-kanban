@@ -16,7 +16,7 @@
    */
   import { createEventDispatcher, onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
-  import { X, AlertCircle, CheckCircle2, Paperclip, Link2 } from 'lucide-svelte';
+  import { X, AlertCircle, CheckCircle2, Paperclip, Link2, History } from 'lucide-svelte';
   import { Button, Badge } from '$lib/components/ui';
   import { cn } from '$lib/utils';
   import TicketQuestions from './TicketQuestions.svelte';
@@ -467,15 +467,27 @@
       </div>
 
       <!-- Footer -->
-      <footer class="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
-        <Button variant="ghost" onclick={handleClose} disabled={resuming}>
-          Close
-        </Button>
-        {#if allRequiredAnswered && questions.length > 0 && ticket.status === 'NEEDS_FEEDBACK'}
-          <Button onclick={handleReadyToResume} disabled={resuming}>
-            {resuming ? 'Resuming...' : 'Resume Processing'}
+      <footer class="px-6 py-4 border-t bg-gray-50 flex justify-between gap-3">
+        <div>
+          <!-- GAP-UX.2: Time Travel History Button -->
+          <a
+            href="/projects/{ticket.projectId}/tickets/{ticket.id}/history"
+            class="inline-flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <History class="w-4 h-4" />
+            View History
+          </a>
+        </div>
+        <div class="flex gap-3">
+          <Button variant="ghost" onclick={handleClose} disabled={resuming}>
+            Close
           </Button>
-        {/if}
+          {#if allRequiredAnswered && questions.length > 0 && ticket.status === 'NEEDS_FEEDBACK'}
+            <Button onclick={handleReadyToResume} disabled={resuming}>
+              {resuming ? 'Resuming...' : 'Resume Processing'}
+            </Button>
+          {/if}
+        </div>
       </footer>
     </div>
   </div>

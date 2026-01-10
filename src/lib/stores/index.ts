@@ -231,3 +231,23 @@ export {
   importConfigs,
   initializeAgentConfigStore
 } from './agent-configs';
+
+// GAP-3.5.1: Notification store for in-app notifications
+export {
+  notificationStore,
+  unreadNotificationCount,
+  notifications,
+  isNotificationsLoading,
+  notificationPreferences,
+  fetchNotifications,
+  loadMoreNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  deleteNotification,
+  addNotification,
+  fetchNotificationPreferences,
+  updateNotificationPreference,
+  bulkUpdateNotificationPreferences,
+  resetNotificationStore,
+  fetchUnreadCount
+} from './notifications';

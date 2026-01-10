@@ -33,7 +33,7 @@
 
   // Tab state
   let activeTab = $state<
-    'defaults' | 'claude-flow' | 'integrations' | 'security'
+    'defaults' | 'claude-flow' | 'notifications' | 'integrations' | 'security'
   >('defaults');
 
   // Settings state (copy of data for editing)
@@ -53,6 +53,7 @@
   const tabs = [
     { id: 'defaults' as const, label: 'Default Settings', icon: Layers },
     { id: 'claude-flow' as const, label: 'Claude Flow', icon: Brain },
+    { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'integrations' as const, label: 'Integrations', icon: Plug },
     { id: 'security' as const, label: 'Security', icon: Lock }
   ];
@@ -455,6 +456,43 @@
               </select>
               <p class="mt-1 text-sm text-gray-500">
                 Storage backend for agent memory and patterns
+              </p>
+            </div>
+          </div>
+        </Card>
+      {/if}
+
+      <!-- Notifications -->
+      {#if activeTab === 'notifications'}
+        <Card class="p-6">
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">
+            Notification Settings
+          </h2>
+          <p class="text-gray-500 mb-6">
+            Configure system-wide notification defaults and user notification settings.
+          </p>
+
+          <div class="space-y-4">
+            <a
+              href="/settings/notifications"
+              class="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <div class="flex items-center justify-between">
+                <div>
+                  <h4 class="font-medium text-gray-900">User Notification Preferences</h4>
+                  <p class="text-sm text-gray-500 mt-1">
+                    Configure your personal notification settings, email digest, and webhooks
+                  </p>
+                </div>
+                <ChevronRight class="w-5 h-5 text-gray-400" />
+              </div>
+            </a>
+
+            <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <h4 class="font-medium text-gray-900 mb-2">System Defaults</h4>
+              <p class="text-sm text-gray-500">
+                System-wide notification defaults are configured through the API.
+                Individual users can override these settings in their personal preferences.
               </p>
             </div>
           </div>
