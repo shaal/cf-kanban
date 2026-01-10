@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@auth/core": "^0.41.1",
+    "@auth/prisma-adapter": "^2.11.1",
     "@auth/sveltekit": "^1.11.1",
     "@prisma/client": "^6.19.1",
     "bits-ui": "^2.15.4",
