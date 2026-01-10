@@ -1,0 +1,303 @@
+# =============================================================================
+# TASK-110: CI/CD Deployment Pipeline
+# =============================================================================
+# Continuous Integration and Deployment for CF-Kanban
+#
+# Pipeline stages:
+# 1. Test - Run linting and all tests
+# 2. Build - Build Docker image and push to registry
+# 3. Deploy Staging - Auto-deploy to staging environment
+# 4. Deploy Production - Manual approval required
+# =============================================================================
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# Minimal permissions - jobs will request additional as needed
+permissions:
+  contents: read
+
+jobs:
+  # ===========================================================================
+  # Test Job - Run all quality checks
+  # ===========================================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: cfkanban_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/cfkanban_test
+
+      - name: Run linting
+        run: npm run lint
+
+      - name: Run type checking
+        run: npm run check
+
+      - name: Run unit tests
+        run: npm run test:unit -- --coverage
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/cfkanban_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/cfkanban_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: false
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            test-results/
+            coverage/
+          retention-days: 14
+
+  # ===========================================================================
+  # Build Job - Build and push Docker image
+  # ===========================================================================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=staging,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
+          retention-days: 90
+
+  # ===========================================================================
+  # Deploy Staging - Automatic deployment to staging
+  # ===========================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      deployments: write
+
+    environment:
+      name: staging
+      url: https://staging.cf-kanban.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment..."
+          echo "Image: ${{ needs.build.outputs.image-tag }}"
+          # Add your deployment commands here, e.g.:
+          # - Railway: railway up --environment staging
+          # - Kubernetes: kubectl set image deployment/cf-kanban app=$IMAGE
+          # - Docker Compose: docker compose -f docker-compose.staging.yml up -d
+
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests against staging..."
+          # Add smoke test commands here
+          # curl -f https://staging.cf-kanban.example.com/health || exit 1
+
+      - name: Notify deployment
+        if: always()
+        run: |
+          echo "Staging deployment completed with status: ${{ job.status }}"
+          # Add notification commands (Slack, Discord, etc.)
+
+  # ===========================================================================
+  # Deploy Production - Manual approval required
+  # ===========================================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, deploy-staging]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      deployments: write
+
+    environment:
+      name: production
+      url: https://cf-kanban.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production environment..."
+          echo "Image: ${{ needs.build.outputs.image-tag }}"
+          # Add your production deployment commands here
+
+      - name: Run production smoke tests
+        run: |
+          echo "Running production smoke tests..."
+          # curl -f https://cf-kanban.example.com/health || exit 1
+
+      - name: Create release tag
+        if: success()
+        run: |
+          echo "Creating release tag for production deployment"
+          # git tag -a "release-$(date +%Y%m%d-%H%M%S)" -m "Production release"
+
+      - name: Notify production deployment
+        if: always()
+        run: |
+          echo "Production deployment completed with status: ${{ job.status }}"
+          # Add notification commands
+
+  # ===========================================================================
+  # Rollback Job - Manual rollback capability
+  # ===========================================================================
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && failure()
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - name: Rollback deployment
+        run: |
+          echo "Rolling back deployment..."
+          # Add rollback commands here
+          # - Kubernetes: kubectl rollout undo deployment/cf-kanban
+          # - Railway: railway rollback

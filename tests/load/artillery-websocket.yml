@@ -1,0 +1,260 @@
+# TASK-115: Artillery Load Testing Configuration
+#
+# Tests WebSocket connections under load:
+# - 50 concurrent WebSocket connections
+# - Sustained messaging for 1 hour
+# - Real-time event simulation
+#
+# Run with:
+#   npx artillery run tests/load/artillery-websocket.yml
+#
+# With HTML report:
+#   npx artillery run --output tests/load/artillery-report.json tests/load/artillery-websocket.yml
+#   npx artillery report tests/load/artillery-report.json -o tests/load/artillery-report.html
+
+config:
+  target: "ws://localhost:3001"
+  phases:
+    # Warm up
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up"
+    # Ramp up to full load
+    - duration: 120
+      arrivalRate: 10
+      rampTo: 25
+      name: "Ramp up"
+    # Sustained load - 50 concurrent connections
+    - duration: 3000
+      arrivalRate: 50
+      name: "Sustained load"
+    # Cool down
+    - duration: 60
+      arrivalRate: 10
+      name: "Cool down"
+
+  # WebSocket engine configuration
+  ws:
+    # Maximum message size (1MB)
+    maxPayloadSize: 1048576
+    # Send ping frames every 30 seconds
+    pingInterval: 30000
+    # Close connection if no pong in 60 seconds
+    pongTimeout: 60000
+
+  # Variables for test data
+  variables:
+    projectIds:
+      - "project-1"
+      - "project-2"
+      - "project-3"
+      - "project-4"
+      - "project-5"
+    priorities:
+      - "LOW"
+      - "MEDIUM"
+      - "HIGH"
+      - "CRITICAL"
+    statuses:
+      - "BACKLOG"
+      - "TODO"
+      - "IN_PROGRESS"
+      - "NEEDS_FEEDBACK"
+      - "DONE"
+
+  # Plugins
+  plugins:
+    expect: {}
+    metrics-by-endpoint:
+      useOnlyRequestNames: true
+
+  # Ensure connections stay open
+  ensure:
+    - maxErrorRate: 1
+    - p95ResponseTime: 200
+
+scenarios:
+  # Scenario 1: Project room subscriber
+  - name: "Project Room Subscriber"
+    engine: "ws"
+    weight: 50
+    flow:
+      # Connect to WebSocket
+      - connect: "/socket.io/?EIO=4&transport=websocket"
+
+      # Join a project room
+      - send:
+          json:
+            type: "join"
+            projectId: "{{ $randomItem(projectIds) }}"
+
+      # Wait for join confirmation
+      - think: 1
+
+      # Subscribe to events for 1 hour
+      - loop:
+          - think: 5
+          # Wait for server events
+          - wait:
+              timeout: 30
+        count: 720  # 720 * 5s = 1 hour
+
+  # Scenario 2: Active ticket updater
+  - name: "Active Ticket Updater"
+    engine: "ws"
+    weight: 30
+    flow:
+      - connect: "/socket.io/?EIO=4&transport=websocket"
+
+      # Join project room
+      - send:
+          json:
+            type: "join"
+            projectId: "{{ $randomItem(projectIds) }}"
+
+      - think: 2
+
+      # Simulate frequent ticket updates
+      - loop:
+          - send:
+              json:
+                type: "ticket:update"
+                ticketId: "ticket-{{ $uuid }}"
+                changes:
+                  title: "Updated at {{ $timestamp }}"
+                  priority: "{{ $randomItem(priorities) }}"
+          - think:
+              min: 2
+              max: 10
+        count: 360  # Run for ~1 hour with random delays
+
+  # Scenario 3: Ticket lifecycle simulation
+  - name: "Ticket Lifecycle"
+    engine: "ws"
+    weight: 20
+    flow:
+      - connect: "/socket.io/?EIO=4&transport=websocket"
+
+      # Join project room
+      - send:
+          json:
+            type: "join"
+            projectId: "{{ $randomItem(projectIds) }}"
+
+      - think: 2
+
+      # Create and transition tickets
+      - loop:
+          # Create ticket
+          - send:
+              json:
+                type: "ticket:create"
+                data:
+                  projectId: "{{ $randomItem(projectIds) }}"
+                  title: "Load test ticket {{ $uuid }}"
+                  description: "Created during load testing"
+                  priority: "{{ $randomItem(priorities) }}"
+          - think: 5
+
+          # Transition to TODO
+          - send:
+              json:
+                type: "ticket:transition"
+                ticketId: "{{ $lastResponse.ticketId }}"
+                toState: "TODO"
+          - think: 3
+
+          # Transition to IN_PROGRESS
+          - send:
+              json:
+                type: "ticket:transition"
+                ticketId: "{{ $lastResponse.ticketId }}"
+                toState: "IN_PROGRESS"
+          - think: 10
+
+          # Transition to DONE
+          - send:
+              json:
+                type: "ticket:transition"
+                ticketId: "{{ $lastResponse.ticketId }}"
+                toState: "DONE"
+          - think: 5
+        count: 180  # Run for ~1 hour
+
+---
+# Alternative HTTP + WebSocket combined test
+
+config:
+  target: "http://localhost:4173"
+  phases:
+    - duration: 300
+      arrivalRate: 10
+      name: "Sustained HTTP load"
+
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  # HTTP API load test
+  - name: "HTTP API Load"
+    flow:
+      # List projects
+      - get:
+          url: "/api/projects"
+          expect:
+            - statusCode: 200
+
+      # Create project
+      - post:
+          url: "/api/projects"
+          json:
+            name: "Artillery Test {{ $uuid }}"
+            description: "Created by Artillery"
+          capture:
+            - json: "$.id"
+              as: "projectId"
+          expect:
+            - statusCode: 201
+
+      - think: 2
+
+      # Create tickets
+      - loop:
+          - post:
+              url: "/api/projects/{{ projectId }}/tickets"
+              json:
+                title: "Artillery Ticket {{ $uuid }}"
+                description: "Load test ticket"
+                priority: "{{ $randomItem(priorities) }}"
+              capture:
+                - json: "$.id"
+                  as: "ticketId"
+              expect:
+                - statusCode: 201
+
+          - think: 1
+
+          # Transition ticket
+          - post:
+              url: "/api/tickets/{{ ticketId }}/transition"
+              json:
+                toState: "TODO"
+              expect:
+                - statusCode: 200
+
+          - think: 1
+
+          - post:
+              url: "/api/tickets/{{ ticketId }}/transition"
+              json:
+                toState: "IN_PROGRESS"
+              expect:
+                - statusCode: 200
+        count: 5
+
+      # Cleanup
+      - delete:
+          url: "/api/projects/{{ projectId }}"
+          expect:
+            - statusCode: 204
