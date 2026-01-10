@@ -1,0 +1,13 @@
+# Visual regression test snapshots directory
+# Baseline screenshots will be stored here
+#
+# To update baselines, run:
+#   npx playwright test --update-snapshots --project=visual
+#
+# Directory structure:
+#   snapshots/
+#     visual/
+#       d3-visualizations.spec.ts/
+#         force-graph-default.png
+#         line-chart-default.png
+#         ...
