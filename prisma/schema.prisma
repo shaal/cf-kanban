@@ -91,13 +91,53 @@ model Ticket {
   assignedToId String?
   assignedTo   User?          @relation("AssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
+  /// GAP-3.2.4: Ticket dependency IDs - tickets that must be completed before this one can progress
+  dependencyIds String[]
+
   history     TicketHistory[]
   questions   TicketQuestion[]
+
+  /// GAP-3.2.5: File attachments for tickets
+  attachments TicketAttachment[]
 
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
   @@index([assignedToId])
+}
+
+/// GAP-3.2.5: File attachments for tickets
+/// Stores metadata about files attached to tickets (mockups, specs, references)
+model TicketAttachment {
+  id          String   @id @default(cuid())
+
+  ticketId    String
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  /// Original filename as uploaded by user
+  filename    String
+
+  /// Stored filename (unique, includes timestamp/id)
+  storedName  String
+
+  /// MIME type of the file
+  mimeType    String
+
+  /// File size in bytes
+  size        Int
+
+  /// Relative path from uploads directory
+  path        String
+
+  /// Optional description or notes about the attachment
+  description String?
+
+  /// User who uploaded the file (optional for now)
+  uploadedBy  String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([ticketId])
 }
 
 model TicketHistory {

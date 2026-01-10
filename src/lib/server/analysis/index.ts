@@ -45,3 +45,13 @@ export {
   type DependencyType,
   type DependencyResult
 } from './dependencies';
+
+// NLP Parser (GAP-3.2.7)
+export {
+  NLPParserService,
+  nlpParser,
+  type NLPParseResult,
+  type TechnicalRequirement,
+  type RoutingHint,
+  type Entity
+} from './nlp-parser';

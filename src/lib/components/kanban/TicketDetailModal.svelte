@@ -3,27 +3,37 @@
    * TicketDetailModal Component
    *
    * GAP-3.2.6: Feedback Interaction UI Enhancement
+   * GAP-3.2.3: Estimated Completion Time Display
+   * GAP-3.2.4: Ticket Dependency Detection
    *
    * A modal dialog that displays ticket details and allows users to:
    * - View ticket information (title, description, priority, labels)
+   * - View estimated completion time (GAP-3.2.3)
+   * - View and manage ticket dependencies (GAP-3.2.4)
    * - Answer pending questions from Claude
    * - Request clarification on questions
    * - Resume ticket processing after answering all required questions
    */
   import { createEventDispatcher, onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
-  import { X, AlertCircle, CheckCircle2 } from 'lucide-svelte';
+  import { X, AlertCircle, CheckCircle2, Paperclip, Link2 } from 'lucide-svelte';
   import { Button, Badge } from '$lib/components/ui';
   import { cn } from '$lib/utils';
   import TicketQuestions from './TicketQuestions.svelte';
-  import type { Ticket, TicketWithQuestions, Priority, TicketQuestion } from '$lib/types';
+  import TimeEstimateBadge from './TimeEstimateBadge.svelte';
+  import FileDropZone from './FileDropZone.svelte';
+  import AttachmentsList from './AttachmentsList.svelte';
+  import DependencySelector from './DependencySelector.svelte';
+  import type { Ticket, TicketWithQuestions, Priority, TicketQuestion, TicketAttachment } from '$lib/types';
 
   interface Props {
     open?: boolean;
     ticket: Ticket | TicketWithQuestions | null;
+    /** GAP-3.2.4: All tickets in the project for dependency selection */
+    availableTickets?: Ticket[];
   }
 
-  let { open = $bindable(false), ticket }: Props = $props();
+  let { open = $bindable(false), ticket, availableTickets = [] }: Props = $props();
 
   const dispatch = createEventDispatcher<{
     close: void;
@@ -37,6 +47,14 @@
   let questions = $state<TicketQuestion[]>([]);
   let resuming = $state(false);
 
+  // GAP-3.2.5: Attachments state
+  let attachments = $state<TicketAttachment[]>([]);
+  let loadingAttachments = $state(false);
+
+  // GAP-3.2.4: Dependencies state
+  let dependencyIds = $state<string[]>([]);
+  let savingDependencies = $state(false);
+
   /**
    * Priority badge colors
    */
@@ -48,11 +66,14 @@
   };
 
   /**
-   * Load questions when ticket changes
+   * Load questions, attachments, and dependencies when ticket changes
    */
   $effect(() => {
     if (open && ticket) {
       loadQuestions();
+      loadAttachments();
+      // GAP-3.2.4: Load dependencies from ticket
+      dependencyIds = ticket.dependencyIds || [];
     }
   });
 
@@ -84,6 +105,80 @@
       error = 'Network error loading questions';
     } finally {
       loading = false;
+    }
+  }
+
+  /**
+   * GAP-3.2.5: Fetch attachments for the ticket
+   */
+  async function loadAttachments() {
+    if (!ticket) return;
+
+    loadingAttachments = true;
+
+    try {
+      const response = await fetch(`/api/tickets/${ticket.id}/attachments`);
+      if (response.ok) {
+        const data = await response.json();
+        attachments = data.attachments || [];
+      }
+    } catch (err) {
+      console.error('Error loading attachments:', err);
+    } finally {
+      loadingAttachments = false;
+    }
+  }
+
+  /**
+   * GAP-3.2.5: Handle attachment uploaded
+   */
+  function handleAttachmentUploaded(event: CustomEvent<{ attachment: TicketAttachment }>) {
+    attachments = [event.detail.attachment, ...attachments];
+  }
+
+  /**
+   * GAP-3.2.5: Handle attachment deleted
+   */
+  function handleAttachmentDeleted(event: CustomEvent<{ attachmentId: string }>) {
+    attachments = attachments.filter(a => a.id !== event.detail.attachmentId);
+  }
+
+  /**
+   * GAP-3.2.5: Handle attachment error
+   */
+  function handleAttachmentError(event: CustomEvent<{ message: string }>) {
+    error = event.detail.message;
+  }
+
+  /**
+   * GAP-3.2.4: Handle dependency change
+   */
+  async function handleDependencyChange(event: CustomEvent<{ dependencyIds: string[] }>) {
+    if (!ticket) return;
+
+    const newDependencyIds = event.detail.dependencyIds;
+    savingDependencies = true;
+    error = '';
+
+    try {
+      const response = await fetch(`/api/tickets/${ticket.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dependencyIds: newDependencyIds })
+      });
+
+      if (response.ok) {
+        dependencyIds = newDependencyIds;
+        const updatedTicket = await response.json();
+        dispatch('updated', { ticket: updatedTicket });
+      } else {
+        const data = await response.json();
+        error = data.error || data.message || 'Failed to update dependencies';
+      }
+    } catch (err) {
+      error = 'Network error updating dependencies';
+    } finally {
+      savingDependencies = false;
     }
   }
 
@@ -251,18 +346,85 @@
           </div>
         {/if}
 
-        <!-- Status indicator -->
-        <div class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-          <span class="text-sm font-medium text-gray-700">Status:</span>
-          <span class={cn(
-            'text-sm px-2 py-0.5 rounded-full font-medium',
-            ticket.status === 'NEEDS_FEEDBACK' ? 'bg-amber-100 text-amber-700' :
-            ticket.status === 'READY_TO_RESUME' ? 'bg-teal-100 text-teal-700' :
-            ticket.status === 'DONE' ? 'bg-green-100 text-green-700' :
-            'bg-gray-100 text-gray-700'
-          )}>
-            {ticket.status.replace(/_/g, ' ')}
-          </span>
+        <!-- GAP-3.2.4: Dependencies section -->
+        <div>
+          <div class="flex items-center gap-2 mb-3">
+            <Link2 class="w-4 h-4 text-gray-500" />
+            <h3 class="text-sm font-medium text-gray-700">
+              Dependencies
+              {#if dependencyIds.length > 0}
+                <span class="text-gray-400 font-normal">({dependencyIds.length})</span>
+              {/if}
+              {#if savingDependencies}
+                <span class="text-blue-500 text-xs ml-2">Saving...</span>
+              {/if}
+            </h3>
+          </div>
+
+          <DependencySelector
+            selectedIds={dependencyIds}
+            {availableTickets}
+            currentTicketId={ticket.id}
+            disabled={savingDependencies}
+            on:change={handleDependencyChange}
+          />
+        </div>
+
+        <!-- Status and Time Estimate -->
+        <div class="flex items-center gap-4 p-3 bg-gray-50 rounded-lg flex-wrap">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-gray-700">Status:</span>
+            <span class={cn(
+              'text-sm px-2 py-0.5 rounded-full font-medium',
+              ticket.status === 'NEEDS_FEEDBACK' ? 'bg-amber-100 text-amber-700' :
+              ticket.status === 'READY_TO_RESUME' ? 'bg-teal-100 text-teal-700' :
+              ticket.status === 'DONE' ? 'bg-green-100 text-green-700' :
+              'bg-gray-100 text-gray-700'
+            )}>
+              {ticket.status.replace(/_/g, ' ')}
+            </span>
+          </div>
+          <!-- GAP-3.2.3: Time Estimate Display -->
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-gray-700">Time:</span>
+            <TimeEstimateBadge ticketId={ticket.id} showConfidence />
+          </div>
+        </div>
+
+        <!-- GAP-3.2.5: Attachments section -->
+        <div>
+          <div class="flex items-center gap-2 mb-3">
+            <Paperclip class="w-4 h-4 text-gray-500" />
+            <h3 class="text-sm font-medium text-gray-700">
+              Attachments
+              {#if attachments.length > 0}
+                <span class="text-gray-400 font-normal">({attachments.length})</span>
+              {/if}
+            </h3>
+          </div>
+
+          <!-- Upload drop zone -->
+          <FileDropZone
+            ticketId={ticket.id}
+            class="mb-3"
+            on:uploaded={handleAttachmentUploaded}
+            on:error={handleAttachmentError}
+          />
+
+          <!-- Existing attachments list -->
+          {#if loadingAttachments}
+            <div class="flex items-center justify-center py-4">
+              <div class="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+              <span class="ml-2 text-sm text-gray-500">Loading attachments...</span>
+            </div>
+          {:else}
+            <AttachmentsList
+              {attachments}
+              ticketId={ticket.id}
+              on:deleted={handleAttachmentDeleted}
+              on:error={handleAttachmentError}
+            />
+          {/if}
         </div>
 
         <!-- Questions section (GAP-3.2.6) -->

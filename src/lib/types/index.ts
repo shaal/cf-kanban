@@ -44,6 +44,8 @@ export interface Ticket {
   projectId: string;
   project?: Project;
   history?: TicketHistory[];
+  /** GAP-3.2.4: IDs of tickets that must be completed before this one can progress */
+  dependencyIds?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,6 +73,8 @@ export interface CreateTicketRequest {
   priority?: Priority;
   labels?: string[];
   complexity?: number;
+  /** GAP-3.2.4: IDs of tickets this one depends on */
+  dependencyIds?: string[];
 }
 
 /**
@@ -123,6 +127,29 @@ export interface TicketQuestion {
  */
 export interface TicketWithQuestions extends Ticket {
   questions: TicketQuestion[];
+}
+
+/**
+ * GAP-3.2.5: Ticket attachment for file uploads
+ */
+export interface TicketAttachment {
+  id: string;
+  ticketId: string;
+  filename: string;
+  storedName: string;
+  mimeType: string;
+  size: number;
+  path: string;
+  description?: string | null;
+  uploadedBy?: string | null;
+  createdAt: Date;
+}
+
+/**
+ * GAP-3.2.5: Ticket with attachments included
+ */
+export interface TicketWithAttachments extends Ticket {
+  attachments: TicketAttachment[];
 }
 
 /**

@@ -4,13 +4,17 @@
    *
    * TASK-018: Add Ticket Creation Modal
    * GAP-8.5: Contextual Suggestions on Ticket Creation
+   * GAP-3.2.4: Ticket Dependency Detection
+   * GAP-3.2.7: Natural Language Task Parsing
    *
    * A modal form for creating new tickets with:
    * - Title (required)
    * - Description (optional)
    * - Priority dropdown
-   * - Labels (comma-separated)
+   * - Labels (comma-separated, with NLP auto-suggestions)
+   * - Dependencies (GAP-3.2.4)
    * - AI-powered contextual suggestions (GAP-8.5)
+   * - NLP-powered label suggestions (GAP-3.2.7)
    *
    * Uses fly/fade transitions for smooth animation.
    * Dispatches 'created' event on success.
@@ -20,10 +24,33 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Input from '$lib/components/ui/Input.svelte';
   import TicketSuggestions from './TicketSuggestions.svelte';
+  import DependencySelector from './DependencySelector.svelte';
   import { X } from 'lucide-svelte';
+  import type { Ticket } from '$lib/types';
 
   export let open = false;
   export let projectId: string;
+  /** GAP-3.2.4: Available tickets for dependency selection */
+  export let availableTickets: Ticket[] = [];
+
+  /**
+   * GAP-3.2.7: Handle NLP label suggestion
+   * Adds a suggested label to the labels input if not already present
+   */
+  function handleLabelSuggestion(label: string) {
+    const currentLabels = labelsInput
+      .split(',')
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    if (!currentLabels.includes(label)) {
+      if (labelsInput.trim()) {
+        labelsInput = labelsInput.trim() + ', ' + label;
+      } else {
+        labelsInput = label;
+      }
+    }
+  }
 
   const dispatch = createEventDispatcher<{
     created: { ticket: unknown };
@@ -34,6 +61,7 @@
   let description = '';
   let priority = 'MEDIUM';
   let labelsInput = '';
+  let dependencyIds: string[] = [];
   let loading = false;
   let error = '';
 
@@ -45,6 +73,7 @@
     description = '';
     priority = 'MEDIUM';
     labelsInput = '';
+    dependencyIds = [];
     error = '';
   }
 
@@ -73,7 +102,8 @@
           title: title.trim(),
           description: description.trim() || undefined,
           priority,
-          labels
+          labels,
+          dependencyIds: dependencyIds.length > 0 ? dependencyIds : undefined
         })
       });
 
@@ -230,7 +260,15 @@
           </p>
         </div>
 
-        <!-- GAP-8.5: Contextual Suggestions -->
+        <!-- GAP-3.2.4: Dependencies -->
+        <DependencySelector
+          selectedIds={dependencyIds}
+          {availableTickets}
+          disabled={loading}
+          on:change={(e) => dependencyIds = e.detail.dependencyIds}
+        />
+
+        <!-- GAP-8.5: Contextual Suggestions + GAP-3.2.7: NLP Parsing -->
         <TicketSuggestions
           {title}
           {description}
@@ -238,6 +276,7 @@
           labels={labelsInput.split(',').map(l => l.trim()).filter(Boolean)}
           {projectId}
           debounceMs={300}
+          onLabelSuggestion={handleLabelSuggestion}
         />
 
         <!-- Actions -->

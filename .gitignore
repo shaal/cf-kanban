@@ -50,3 +50,7 @@ prisma/*.db
 *.tsbuildinfo
 
 .playwright-mcp/
+
+# GAP-3.2.5: Uploaded attachments (stored locally)
+uploads/*
+!uploads/.gitkeep

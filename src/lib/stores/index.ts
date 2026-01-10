@@ -196,3 +196,17 @@ export {
   type TicketCreationState,
   type ChatMessage
 } from './chat';
+
+// GAP-3.2.3: Time estimates store for completion time tracking
+export {
+  getTimeEstimate,
+  getTicketTimeEstimate,
+  prefetchEstimates,
+  clearEstimate,
+  clearAllEstimates,
+  recordCompletion,
+  formatDuration,
+  getConfidenceLabel,
+  getConfidenceColor,
+  type TimeEstimate
+} from './time-estimates';

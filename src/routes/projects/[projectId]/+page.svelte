@@ -4,6 +4,7 @@
 	 *
 	 * TASK-034: Connect Kanban board to WebSocket
 	 * GAP-3.2.6: Feedback Interaction UI Enhancement
+	 * GAP-3.2.4: Ticket Dependency Detection
 	 *
 	 * Features:
 	 * - Real-time ticket updates via WebSocket
@@ -11,6 +12,7 @@
 	 * - Connection status indicator
 	 * - Project room management (join/leave)
 	 * - Ticket detail modal for viewing/answering questions (GAP-3.2.6)
+	 * - Ticket dependencies with blocking logic (GAP-3.2.4)
 	 */
 	import { onMount, onDestroy } from 'svelte';
 	import type { PageData } from './$types';
@@ -292,10 +294,11 @@
 	/>
 </main>
 
-<!-- GAP-3.2.6: Ticket detail modal -->
+<!-- GAP-3.2.6: Ticket detail modal + GAP-3.2.4: Dependencies -->
 <TicketDetailModal
 	bind:open={showTicketDetail}
 	ticket={selectedTicket}
+	availableTickets={data.tickets}
 	on:close={handleTicketDetailClose}
 	on:resume={handleTicketResume}
 	on:updated={handleTicketUpdate}

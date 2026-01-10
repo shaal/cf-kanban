@@ -26,3 +26,7 @@ export { default as ConfidenceMeter } from './ConfidenceMeter.svelte';
 export { default as KnowledgeRing } from './KnowledgeRing.svelte';
 export { default as AgentAvatar } from './AgentAvatar.svelte';
 export { default as AIStatusSection } from './AIStatusSection.svelte';
+
+// GAP-3.2.5: Ticket Attachment Support
+export { default as FileDropZone } from './FileDropZone.svelte';
+export { default as AttachmentsList } from './AttachmentsList.svelte';

@@ -6,6 +6,9 @@
    * GAP-3.3.3: Agent Status on Ticket Cards
    * GAP-3.2.6: Feedback Interaction UI Enhancement - Question indicator
    * GAP-UX.1: KanbanCard AI Status Indicators
+   * GAP-3.2.3: Estimated Completion Time Display
+   * GAP-3.2.4: Ticket Dependency Detection
+   * GAP-3.2.5: Ticket Attachment Support - attachment count indicator
    *
    * Features:
    * - Displays ticket title, description (truncated), priority badge, and labels
@@ -15,13 +18,16 @@
    * - Agent status indicators for assigned agents (GAP-3.3.3)
    * - Question indicator badge for tickets in NEEDS_FEEDBACK status (GAP-3.2.6)
    * - AI status section with confidence, knowledge ring, and agent avatar (GAP-UX.1)
+   * - Estimated completion time badge (GAP-3.2.3)
+   * - Dependency indicator badge (GAP-3.2.4)
    */
-  import { GripVertical, MessageCircleQuestion } from 'lucide-svelte';
+  import { GripVertical, MessageCircleQuestion, Link2, Paperclip } from 'lucide-svelte';
   import { Badge } from '../ui';
   import { cn } from '$lib/utils';
   import type { Ticket, Priority, TicketWithQuestions } from '$lib/types';
   import TicketAgentsDisplay from './TicketAgentsDisplay.svelte';
   import AIStatusSection from './AIStatusSection.svelte';
+  import TimeEstimateBadge from './TimeEstimateBadge.svelte';
   import { createTicketAIStatusStore } from '$lib/stores/ai-status';
 
   interface Props {
@@ -62,6 +68,29 @@
   // Reactive derived values for questions
   let showQuestionIndicator = $derived(hasPendingQuestions(ticket));
   let pendingQuestionCount = $derived(getPendingQuestionCount(ticket));
+
+  // GAP-3.2.4: Check if ticket has dependencies
+  let hasDependencies = $derived(ticket.dependencyIds && ticket.dependencyIds.length > 0);
+  let dependencyCount = $derived(ticket.dependencyIds?.length ?? 0);
+
+  // GAP-3.2.5: Track attachment count (fetched separately)
+  let attachmentCount = $state(0);
+
+  // Load attachment count on mount
+  $effect(() => {
+    async function loadAttachmentCount() {
+      try {
+        const response = await fetch(`/api/tickets/${ticket.id}/attachments`);
+        if (response.ok) {
+          const data = await response.json();
+          attachmentCount = data.attachments?.length ?? 0;
+        }
+      } catch {
+        // Silently fail - attachment count is not critical
+      }
+    }
+    loadAttachmentCount();
+  });
 
   // GAP-UX.1: Subscribe to AI status for this ticket
   const aiStatusStore = createTicketAIStatusStore(ticket.id);
@@ -104,6 +133,7 @@
   onkeydown={handleKeyDown}
   aria-label="Ticket: {ticket.title}"
   data-tour="ticket-card"
+  data-ticket-id={ticket.id}
 >
   <div class="flex items-start gap-2">
     <!-- Drag handle icon -->
@@ -129,6 +159,26 @@
             {/if}
           </span>
         {/if}
+        <!-- GAP-3.2.4: Dependency indicator badge -->
+        {#if hasDependencies}
+          <span
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200 flex-shrink-0"
+            title="{dependencyCount} {dependencyCount === 1 ? 'dependency' : 'dependencies'}"
+          >
+            <Link2 class="w-3 h-3" />
+            <span>{dependencyCount}</span>
+          </span>
+        {/if}
+        <!-- GAP-3.2.5: Attachment indicator badge -->
+        {#if attachmentCount > 0}
+          <span
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200 flex-shrink-0"
+            title="{attachmentCount} {attachmentCount === 1 ? 'attachment' : 'attachments'}"
+          >
+            <Paperclip class="w-3 h-3" />
+            <span>{attachmentCount}</span>
+          </span>
+        {/if}
       </div>
 
       <!-- Ticket description (truncated) -->
@@ -138,7 +188,7 @@
         </p>
       {/if}
 
-      <!-- Priority and labels -->
+      <!-- Priority, time estimate, and labels -->
       <div class="flex items-center gap-2 mt-2 flex-wrap">
         <!-- Priority badge -->
         <span
@@ -149,6 +199,9 @@
         >
           {ticket.priority}
         </span>
+
+        <!-- GAP-3.2.3: Time estimate badge -->
+        <TimeEstimateBadge ticketId={ticket.id} compact />
 
         <!-- Labels -->
         {#each ticket.labels as label}

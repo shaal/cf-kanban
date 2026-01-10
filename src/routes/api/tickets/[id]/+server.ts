@@ -27,6 +27,7 @@ export const GET: RequestHandler = async ({ params }) => {
 /**
  * PUT /api/tickets/:id
  * Update a ticket's fields (except status - use transition endpoint)
+ * GAP-3.2.4: Supports updating ticket dependencies
  */
 export const PUT: RequestHandler = async ({ params, request }) => {
 	try {
@@ -40,7 +41,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 		}
 
 		const body = await request.json();
-		const { title, description, priority, labels, complexity, position } = body;
+		const { title, description, priority, labels, complexity, position, dependencyIds } = body;
 
 		// Build update data
 		const updateData: Record<string, unknown> = {};
@@ -95,6 +96,31 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 				);
 			}
 			updateData.position = position;
+		}
+
+		// GAP-3.2.4: Handle dependency updates
+		if (dependencyIds !== undefined) {
+			if (!Array.isArray(dependencyIds)) {
+				return json({ error: 'DependencyIds must be an array' }, { status: 400 });
+			}
+
+			// Validate all dependency IDs exist in the same project
+			if (dependencyIds.length > 0) {
+				const validDependencies = await prisma.ticket.findMany({
+					where: {
+						id: { in: dependencyIds },
+						projectId: existingTicket.projectId
+					},
+					select: { id: true }
+				});
+
+				const validIds = validDependencies.map(t => t.id);
+
+				// Only include valid IDs (silently filter out invalid ones)
+				updateData.dependencyIds = dependencyIds.filter((id: string) => validIds.includes(id));
+			} else {
+				updateData.dependencyIds = [];
+			}
 		}
 
 		const ticket = await prisma.ticket.update({

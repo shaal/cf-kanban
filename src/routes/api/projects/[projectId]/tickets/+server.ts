@@ -48,7 +48,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		}
 
 		const body = await request.json();
-		const { title, description, priority, labels } = body;
+		const { title, description, priority, labels, dependencyIds } = body;
 
 		// Validate required fields
 		if (!title || typeof title !== 'string' || title.trim().length === 0) {
@@ -74,12 +74,32 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		});
 		const nextPosition = (lastTicket?.position ?? -1) + 1;
 
+		// GAP-3.2.4: Validate dependency IDs if provided
+		let validDependencyIds: string[] = [];
+		if (dependencyIds && Array.isArray(dependencyIds) && dependencyIds.length > 0) {
+			// Verify all dependency IDs are valid tickets in this project
+			const dependencyTickets = await prisma.ticket.findMany({
+				where: {
+					id: { in: dependencyIds },
+					projectId
+				},
+				select: { id: true }
+			});
+			validDependencyIds = dependencyTickets.map(t => t.id);
+
+			// Warn if some dependencies were invalid (but don't fail)
+			if (validDependencyIds.length !== dependencyIds.length) {
+				console.warn(`Some dependency IDs were invalid: expected ${dependencyIds.length}, found ${validDependencyIds.length}`);
+			}
+		}
+
 		const ticket = await prisma.ticket.create({
 			data: {
 				title: title.trim(),
 				description: description?.trim() || null,
 				priority: priority || 'MEDIUM',
 				labels: labels || [],
+				dependencyIds: validDependencyIds,
 				position: nextPosition,
 				projectId
 			}
