@@ -4,10 +4,13 @@ import { prisma } from '$lib/server/prisma';
 import { ticketStateMachine } from '$lib/state-machine/ticket-state-machine';
 import type { TicketState } from '$lib/state-machine/types';
 import { TICKET_STATES } from '$lib/state-machine/types';
+import { publishTicketMoved } from '$lib/server/events';
 
 /**
  * POST /api/tickets/:id/transition
  * Transition a ticket to a new state
+ *
+ * TASK-035: Publishes ticket moved events via Redis pub/sub
  */
 export const POST: RequestHandler = async ({ params, request }) => {
 	const { id } = params;
@@ -50,6 +53,15 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			triggeredBy: triggeredBy || 'system',
 			reason
 		});
+
+		// TASK-035: Publish ticket moved event for real-time sync
+		await publishTicketMoved(
+			ticket.projectId,
+			id,
+			currentState,
+			newState,
+			updatedTicket.position
+		);
 
 		return json({
 			ticket: updatedTicket,

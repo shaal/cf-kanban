@@ -1,6 +1,8 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { prisma } from '$lib/server/prisma';
+import { publishTicketCreated } from '$lib/server/events';
+import type { Ticket } from '$lib/types';
 
 /**
  * GET /api/projects/:projectId/tickets
@@ -29,6 +31,8 @@ export const GET: RequestHandler = async ({ params }) => {
 /**
  * POST /api/projects/:projectId/tickets
  * Create a new ticket in the project
+ *
+ * TASK-035: Publishes ticket created event via Redis pub/sub
  */
 export const POST: RequestHandler = async ({ params, request }) => {
 	const { projectId } = params;
@@ -80,6 +84,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				projectId
 			}
 		});
+
+		// TASK-035: Publish ticket created event for real-time sync
+		await publishTicketCreated(projectId, ticket as Ticket);
 
 		return json(ticket, { status: 201 });
 	} catch (err) {

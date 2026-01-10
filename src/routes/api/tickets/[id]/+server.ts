@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { prisma } from '$lib/server/prisma';
+import { publishTicketUpdated, publishTicketDeleted } from '$lib/server/events';
 
 /**
  * GET /api/tickets/:id
@@ -101,6 +102,20 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 			data: updateData
 		});
 
+		// TASK-035: Publish ticket updated event for real-time sync
+		await publishTicketUpdated(
+			existingTicket.projectId,
+			params.id,
+			updateData as Record<string, unknown>,
+			{
+				title: existingTicket.title,
+				description: existingTicket.description,
+				priority: existingTicket.priority,
+				labels: existingTicket.labels,
+				position: existingTicket.position
+			}
+		);
+
 		return json(ticket);
 	} catch (err) {
 		if (err && typeof err === 'object' && 'status' in err) {
@@ -114,6 +129,8 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 /**
  * DELETE /api/tickets/:id
  * Delete a ticket and all its history (cascade)
+ *
+ * TASK-035: Publishes ticket deleted event via Redis pub/sub
  */
 export const DELETE: RequestHandler = async ({ params }) => {
 	try {
@@ -129,6 +146,9 @@ export const DELETE: RequestHandler = async ({ params }) => {
 		await prisma.ticket.delete({
 			where: { id: params.id }
 		});
+
+		// TASK-035: Publish ticket deleted event for real-time sync
+		await publishTicketDeleted(existingTicket.projectId, params.id);
 
 		return new Response(null, { status: 204 });
 	} catch (err) {
