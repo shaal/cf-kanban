@@ -1,9 +1,52 @@
 <script lang="ts">
+	/**
+	 * Project Kanban Board Page
+	 *
+	 * TASK-034: Connect Kanban board to WebSocket
+	 *
+	 * Features:
+	 * - Real-time ticket updates via WebSocket
+	 * - Optimistic UI updates with rollback
+	 * - Connection status indicator
+	 * - Project room management (join/leave)
+	 */
+	import { onMount, onDestroy } from 'svelte';
 	import type { PageData } from './$types';
 	import KanbanBoard from '$lib/components/kanban/KanbanBoard.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { ConnectionIndicator } from '$lib/components/ui';
 	import { ArrowLeft, Plus } from 'lucide-svelte';
+	import {
+		connect,
+		disconnect,
+		joinProject,
+		leaveProject,
+		onTicketCreated,
+		onTicketUpdated,
+		onTicketDeleted,
+		onTicketMoved,
+		connectionStatus
+	} from '$lib/stores/socket';
+	import {
+		tickets,
+		setTickets,
+		addTicket,
+		updateTicket,
+		removeTicket,
+		moveTicket
+	} from '$lib/stores/tickets';
+	import {
+		resolvePositionConflict,
+		setPositionVersion,
+		clearPositions
+	} from '$lib/stores/position';
+	import {
+		addPendingOperation,
+		confirmOperation,
+		rollbackOperation,
+		hasPending
+	} from '$lib/stores/optimistic';
 
 	export let data: PageData;
 
@@ -11,10 +54,86 @@
 	let isTransitioning = false;
 	let transitionError = '';
 
+	// Unsubscribe functions for socket events
+	let unsubscribers: (() => void)[] = [];
+
+	// Initialize tickets store from server data
+	$: setTickets(data.tickets);
+
+	// WebSocket URL (use relative URL in browser, will be handled by proxy/server)
+	const SOCKET_URL = typeof window !== 'undefined'
+		? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+		: '';
+
+	onMount(() => {
+		// Connect to WebSocket server
+		if (SOCKET_URL) {
+			connect(SOCKET_URL);
+		}
+
+		// Join this project's room
+		joinProject(data.project.id);
+
+		// Subscribe to real-time events
+		unsubscribers.push(
+			onTicketCreated((ticket) => {
+				addTicket(ticket);
+			}),
+			onTicketUpdated((update) => {
+				updateTicket(update.id, update);
+			}),
+			onTicketDeleted((ticketId) => {
+				removeTicket(ticketId);
+			}),
+			onTicketMoved((event) => {
+				// Use conflict resolution for position updates
+				const resolution = resolvePositionConflict(
+					event.ticketId,
+					event.version,
+					event.newPosition
+				);
+
+				if (resolution.accepted) {
+					moveTicket(event.ticketId, event.newStatus as any, event.newPosition);
+				}
+			})
+		);
+	});
+
+	onDestroy(() => {
+		// Unsubscribe from all events
+		unsubscribers.forEach((unsub) => unsub());
+
+		// Leave project room and disconnect
+		leaveProject(data.project.id);
+		clearPositions();
+		disconnect();
+	});
+
 	async function handleTicketMove(
 		event: CustomEvent<{ ticketId: string; newStatus: string }>
 	) {
 		const { ticketId, newStatus } = event.detail;
+
+		// Find the current ticket to get previous state
+		const currentTicket = $tickets.find((t) => t.id === ticketId);
+		if (!currentTicket) return;
+
+		const previousState = {
+			status: currentTicket.status,
+			position: currentTicket.position
+		};
+
+		// TASK-037: Optimistic update - update UI immediately
+		const operationId = addPendingOperation({
+			type: 'move',
+			ticketId,
+			previousState,
+			newState: { status: newStatus, position: currentTicket.position }
+		});
+
+		// Apply optimistic update to store
+		moveTicket(ticketId, newStatus as any, currentTicket.position);
 
 		isTransitioning = true;
 		transitionError = '';
@@ -30,14 +149,28 @@
 			});
 
 			if (response.ok) {
+				// Confirm the optimistic update
+				confirmOperation(operationId);
 				await invalidateAll();
 			} else {
 				const errorData = await response.json();
 				transitionError = errorData.message || 'Failed to move ticket';
+
+				// Rollback the optimistic update
+				const rollback = rollbackOperation(operationId);
+				if (rollback && rollback.state) {
+					moveTicket(ticketId, rollback.state.status as any, rollback.state.position as number);
+				}
 				await invalidateAll();
 			}
 		} catch (err) {
 			transitionError = 'Network error occurred';
+
+			// Rollback the optimistic update
+			const rollback = rollbackOperation(operationId);
+			if (rollback && rollback.state) {
+				moveTicket(ticketId, rollback.state.status as any, rollback.state.position as number);
+			}
 			await invalidateAll();
 		} finally {
 			isTransitioning = false;
@@ -80,11 +213,17 @@
 				<ArrowLeft class="w-5 h-5" />
 			</a>
 			<div class="flex-1">
-				<h1 class="text-2xl font-bold">{data.project.name}</h1>
+				<div class="flex items-center gap-3">
+					<h1 class="text-2xl font-bold">{data.project.name}</h1>
+					<ConnectionIndicator showLabel={false} size="sm" />
+				</div>
 				{#if data.project.description}
 					<p class="text-gray-600 mt-1">{data.project.description}</p>
 				{/if}
 			</div>
+			{#if $hasPending}
+				<span class="text-sm text-yellow-600 animate-pulse">Syncing...</span>
+			{/if}
 			<Button on:click={() => (showCreateModal = true)}>
 				<Plus class="w-4 h-4 mr-2" />
 				New Ticket
