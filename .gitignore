@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.svelte-kit/
+build/
+dist/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+playwright-report/
+test-results/
+
+# Claude Flow - Runtime State (machine-specific, auto-generated)
+.claude-flow/daemon-state.json
+.claude-flow/metrics/
+.claude-flow/logs/
+.claude-flow/cache/
+
+# Swarm - Session State (ephemeral)
+.swarm/state.json
+.swarm/agents/
+.swarm/logs/
+
+# Database
+*.db
+*.sqlite
+prisma/*.db
+
+# Misc
+.turbo/
+*.tsbuildinfo
