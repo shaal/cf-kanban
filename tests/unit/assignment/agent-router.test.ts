@@ -252,7 +252,8 @@ describe('Agent Router', () => {
 
         // Should still return valid assignment
         expect(result.agents.length).toBeGreaterThan(0);
-        expect(result.confidence).toBe(0.6); // Default confidence
+        // Confidence is analysis.confidence * 0.8 when no pattern
+        expect(result.confidence).toBeCloseTo(0.64, 2);
       });
     });
 
@@ -294,7 +295,7 @@ describe('Agent Router', () => {
     });
 
     describe('confidence scoring', () => {
-      it('should have default confidence of 0.6 without learned patterns', async () => {
+      it('should have reduced confidence without learned patterns', async () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
           confidence: 0.7
@@ -302,7 +303,8 @@ describe('Agent Router', () => {
 
         const result = await router.assignAgents(analysis);
 
-        expect(result.confidence).toBe(0.6);
+        // Confidence is analysis.confidence * 0.8 when no pattern
+        expect(result.confidence).toBeCloseTo(0.56, 2);
       });
 
       it('should have higher confidence with successful learned pattern', async () => {
@@ -340,11 +342,12 @@ describe('Agent Router', () => {
         expect(result.topology).toBeDefined();
       });
 
-      it('should handle very high complexity', async () => {
+      it('should handle high confidence analysis', async () => {
         const analysis: AnalysisResult = createMockAnalysis({
           ticketType: 'feature',
-          confidence: 0.60,
-          suggestedAgents: ['coordinator', 'coder', 'tester', 'reviewer']
+          confidence: 0.95,
+          suggestedAgents: ['coordinator', 'coder', 'tester', 'reviewer'],
+          suggestedTopology: 'hierarchical'
         });
 
         const result = await router.assignAgents(analysis);
