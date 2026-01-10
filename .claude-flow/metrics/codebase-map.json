@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-01-09T22:31:04.634Z",
+  "timestamp": "2026-01-10T00:05:12.117Z",
   "projectRoot": "/home/shaal/code/utilities/cf-kanban",
   "structure": {
     "hasPackageJson": false,
@@ -7,5 +7,5 @@
     "hasClaudeConfig": true,
     "hasClaudeFlow": true
   },
-  "scannedAt": 1767997864634
+  "scannedAt": 1768003512117
 }
