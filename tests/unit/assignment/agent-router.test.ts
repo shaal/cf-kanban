@@ -1,0 +1,456 @@
+/**
+ * TASK-063: Unit Tests for Agent Router
+ *
+ * Tests for the agent assignment service that routes tickets to appropriate
+ * agents based on analysis results and learned patterns.
+ */
+
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+
+// Mock the Claude Flow CLI
+const mockExecute = vi.fn();
+
+vi.mock('$lib/server/claude-flow/cli', () => ({
+  claudeFlowCLI: {
+    execute: mockExecute,
+    executeJson: vi.fn()
+  }
+}));
+
+// Import after mocks
+import {
+  assignAgents,
+  storeSuccessfulAssignment,
+  type AgentAssignment,
+  type AgentConfig
+} from '$lib/server/assignment/agent-router';
+import type { AnalysisResult } from '$lib/server/analysis/ticket-analyzer';
+
+describe('Agent Router', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExecute.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, timedOut: false });
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  describe('assignAgents', () => {
+    describe('basic assignment from analysis', () => {
+      it('should assign agents based on suggested agents from analysis', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          suggestedAgents: ['planner', 'coder', 'tester', 'reviewer'],
+          complexity: 3
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.agents.length).toBe(4);
+        expect(result.agents.map(a => a.type)).toContain('planner');
+        expect(result.agents.map(a => a.type)).toContain('coder');
+        expect(result.agents.map(a => a.type)).toContain('tester');
+        expect(result.agents.map(a => a.type)).toContain('reviewer');
+      });
+
+      it('should assign roles based on position and complexity', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          suggestedAgents: ['coordinator', 'coder', 'tester'],
+          complexity: 6
+        });
+
+        const result = await assignAgents(analysis);
+
+        const coordinator = result.agents.find(a => a.type === 'coordinator');
+        expect(coordinator?.role).toBe('coordinator');
+
+        const workers = result.agents.filter(a => a.type !== 'coordinator');
+        workers.forEach(w => {
+          expect(w.role).toBe('worker');
+        });
+      });
+
+      it('should assign priority based on agent order', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          suggestedAgents: ['coder', 'tester', 'reviewer'],
+          complexity: 3
+        });
+
+        const result = await assignAgents(analysis);
+
+        const coder = result.agents.find(a => a.type === 'coder');
+        const reviewer = result.agents.find(a => a.type === 'reviewer');
+
+        expect(coder?.priority).toBeGreaterThan(reviewer?.priority || 0);
+      });
+    });
+
+    describe('topology selection', () => {
+      it('should use single topology for 1 agent', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'chore',
+          suggestedAgents: ['coder'],
+          suggestedTopology: 'single',
+          complexity: 1
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.topology).toBe('single');
+      });
+
+      it('should use mesh topology for low complexity', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'bug',
+          suggestedAgents: ['researcher', 'coder', 'tester'],
+          suggestedTopology: 'mesh',
+          complexity: 3
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.topology).toBe('mesh');
+      });
+
+      it('should upgrade to hierarchical for 4+ agents', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          suggestedAgents: ['planner', 'coder', 'tester', 'reviewer', 'api-docs'],
+          suggestedTopology: 'mesh',
+          complexity: 5
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.topology).toBe('hierarchical');
+        expect(result.reasoning).toContain('Upgraded to hierarchical topology for 4+ agents');
+      });
+
+      it('should use hierarchical for high complexity', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          suggestedAgents: ['coordinator', 'coder', 'tester'],
+          suggestedTopology: 'hierarchical',
+          complexity: 7
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.topology).toBe('hierarchical');
+      });
+    });
+
+    describe('coordinator management', () => {
+      it('should add coordinator for hierarchical topology if not present', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          suggestedAgents: ['coder', 'tester', 'reviewer', 'api-docs', 'security-auditor'],
+          suggestedTopology: 'mesh',
+          complexity: 6
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.topology).toBe('hierarchical');
+        expect(result.agents.find(a => a.type === 'coordinator')).toBeDefined();
+        expect(result.reasoning).toContain('Added coordinator for hierarchical topology');
+      });
+
+      it('should not add duplicate coordinator', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          suggestedAgents: ['coordinator', 'coder', 'tester'],
+          suggestedTopology: 'hierarchical',
+          complexity: 6
+        });
+
+        const result = await assignAgents(analysis);
+
+        const coordinators = result.agents.filter(a => a.type === 'coordinator');
+        expect(coordinators.length).toBe(1);
+      });
+
+      it('should place coordinator first in agent list', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          suggestedAgents: ['coder', 'tester', 'reviewer', 'api-docs', 'security-auditor'],
+          suggestedTopology: 'hierarchical',
+          complexity: 6
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.agents[0].type).toBe('coordinator');
+        expect(result.agents[0].role).toBe('coordinator');
+      });
+    });
+
+    describe('learned patterns', () => {
+      it('should use learned pattern when available and successful', async () => {
+        mockExecute.mockResolvedValue({
+          stdout: 'agents: [coordinator, coder, tester] topology: hierarchical success: 0.85',
+          stderr: '',
+          exitCode: 0,
+          timedOut: false
+        });
+
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          keywords: ['api', 'database'],
+          suggestedAgents: ['planner', 'coder'],
+          complexity: 5
+        });
+
+        const result = await assignAgents(analysis);
+
+        // Should use learned pattern with high success rate
+        expect(result.confidence).toBeGreaterThan(0.7);
+        expect(result.reasoning.some(r => r.includes('learned pattern'))).toBe(true);
+      });
+
+      it('should not use learned pattern with low success rate', async () => {
+        mockExecute.mockResolvedValue({
+          stdout: 'agents: [coder] topology: single success: 0.4',
+          stderr: '',
+          exitCode: 0,
+          timedOut: false
+        });
+
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          suggestedAgents: ['planner', 'coder', 'tester'],
+          complexity: 5
+        });
+
+        const result = await assignAgents(analysis);
+
+        // Should fall back to analysis-based assignment
+        expect(result.agents.length).toBeGreaterThan(1);
+      });
+
+      it('should handle pattern search failure gracefully', async () => {
+        mockExecute.mockRejectedValue(new Error('CLI unavailable'));
+
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'bug',
+          suggestedAgents: ['researcher', 'coder', 'tester'],
+          complexity: 3
+        });
+
+        const result = await assignAgents(analysis);
+
+        // Should still return valid assignment
+        expect(result.agents.length).toBeGreaterThan(0);
+        expect(result.confidence).toBe(0.6); // Default confidence
+      });
+    });
+
+    describe('reasoning', () => {
+      it('should include ticket type in reasoning', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'bug',
+          complexity: 3
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.reasoning.some(r => r.includes('bug'))).toBe(true);
+      });
+
+      it('should include complexity in reasoning', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          complexity: 7
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.reasoning.some(r => r.includes('7'))).toBe(true);
+      });
+
+      it('should explain each agent addition', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          suggestedAgents: ['planner', 'coder'],
+          complexity: 3
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.reasoning.some(r => r.includes('planner'))).toBe(true);
+        expect(result.reasoning.some(r => r.includes('coder'))).toBe(true);
+      });
+    });
+
+    describe('confidence scoring', () => {
+      it('should have default confidence of 0.6 without learned patterns', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          complexity: 5
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.confidence).toBe(0.6);
+      });
+
+      it('should have higher confidence with successful learned pattern', async () => {
+        mockExecute.mockResolvedValue({
+          stdout: 'agents: [coder, tester] topology: mesh success: 0.9',
+          stderr: '',
+          exitCode: 0,
+          timedOut: false
+        });
+
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          keywords: ['api'],
+          complexity: 3
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.confidence).toBeGreaterThanOrEqual(0.7);
+      });
+    });
+
+    describe('edge cases', () => {
+      it('should handle empty suggested agents', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          suggestedAgents: [],
+          complexity: 1
+        });
+
+        const result = await assignAgents(analysis);
+
+        // Should still return a valid result, possibly with default agents
+        expect(result).toBeDefined();
+        expect(result.topology).toBeDefined();
+      });
+
+      it('should handle very high complexity', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'feature',
+          complexity: 10,
+          suggestedAgents: ['coordinator', 'coder', 'tester', 'reviewer']
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result.topology).toBe('hierarchical');
+        expect(result.agents.find(a => a.role === 'coordinator')).toBeDefined();
+      });
+
+      it('should handle unknown ticket type', async () => {
+        const analysis: AnalysisResult = createMockAnalysis({
+          ticketType: 'unknown' as any,
+          complexity: 3
+        });
+
+        const result = await assignAgents(analysis);
+
+        expect(result).toBeDefined();
+        expect(result.agents.length).toBeGreaterThan(0);
+      });
+    });
+  });
+
+  describe('storeSuccessfulAssignment', () => {
+    it('should store pattern in Claude Flow memory', async () => {
+      const analysis: AnalysisResult = createMockAnalysis({
+        ticketType: 'feature',
+        keywords: ['api', 'database'],
+        complexity: 5
+      });
+
+      const assignment: AgentAssignment = {
+        agents: [
+          { type: 'coder', role: 'worker', priority: 1 },
+          { type: 'tester', role: 'worker', priority: 2 }
+        ],
+        topology: 'mesh',
+        confidence: 0.8,
+        reasoning: ['Test reasoning']
+      };
+
+      await storeSuccessfulAssignment(analysis, assignment, 0.9);
+
+      expect(mockExecute).toHaveBeenCalledWith(
+        'memory',
+        expect.arrayContaining([
+          'store',
+          '--key',
+          expect.stringContaining('assignment-'),
+          '--value',
+          expect.stringContaining('coder'),
+          '--namespace',
+          'agent-assignments'
+        ])
+      );
+    });
+
+    it('should include success rate in stored pattern', async () => {
+      const analysis: AnalysisResult = createMockAnalysis({
+        ticketType: 'bug',
+        complexity: 3
+      });
+
+      const assignment: AgentAssignment = {
+        agents: [{ type: 'coder', role: 'worker', priority: 1 }],
+        topology: 'single',
+        confidence: 0.7,
+        reasoning: []
+      };
+
+      await storeSuccessfulAssignment(analysis, assignment, 0.95);
+
+      expect(mockExecute).toHaveBeenCalledWith(
+        'memory',
+        expect.arrayContaining([
+          '--value',
+          expect.stringContaining('0.95')
+        ])
+      );
+    });
+
+    it('should handle storage failure gracefully', async () => {
+      mockExecute.mockRejectedValue(new Error('Storage failed'));
+
+      const analysis: AnalysisResult = createMockAnalysis({
+        ticketType: 'feature',
+        complexity: 5
+      });
+
+      const assignment: AgentAssignment = {
+        agents: [{ type: 'coder', role: 'worker', priority: 1 }],
+        topology: 'single',
+        confidence: 0.7,
+        reasoning: []
+      };
+
+      // Should not throw
+      await expect(storeSuccessfulAssignment(analysis, assignment, 0.9))
+        .resolves.not.toThrow();
+    });
+  });
+});
+
+// Helper function to create mock analysis results
+function createMockAnalysis(overrides: Partial<AnalysisResult>): AnalysisResult {
+  return {
+    ticketType: 'feature',
+    keywords: [],
+    suggestedLabels: [],
+    complexity: 5,
+    estimatedHours: 4,
+    suggestedAgents: ['coder', 'tester'],
+    suggestedTopology: 'mesh',
+    dependencies: [],
+    risks: [],
+    ...overrides
+  };
+}

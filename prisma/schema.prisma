@@ -31,6 +31,7 @@ model Ticket {
   project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   history     TicketHistory[]
+  questions   TicketQuestion[]
 
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
@@ -63,4 +64,82 @@ enum Priority {
   MEDIUM
   HIGH
   CRITICAL
+}
+
+/// Question types for agent-user feedback loop
+enum QuestionType {
+  TEXT        /// Free-form text input
+  CHOICE      /// Single choice from options
+  MULTISELECT /// Multiple choices from options
+  CONFIRM     /// Yes/No confirmation
+  CODE        /// Code input with syntax highlighting
+}
+
+/// TASK-055: Questions asked by agents during ticket execution
+/// This is the core model for the swim-lane feedback loop
+model TicketQuestion {
+  id           String       @id @default(cuid())
+  ticketId     String
+  ticket       Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  /// Agent that asked the question
+  agentId      String
+
+  /// The question text
+  question     String
+
+  /// Type of answer expected
+  type         QuestionType @default(TEXT)
+
+  /// Options for CHOICE/MULTISELECT types
+  options      String[]
+
+  /// Whether an answer is required before resuming
+  required     Boolean      @default(true)
+
+  /// Additional context about why this question is being asked
+  context      String?
+
+  /// For CODE type: the programming language
+  codeLanguage String?
+
+  /// Default value suggestion
+  defaultValue String?
+
+  /// The user's answer (null if not yet answered)
+  answer       String?
+
+  /// Whether the question has been answered
+  answered     Boolean      @default(false)
+
+  /// When the question was asked
+  createdAt    DateTime     @default(now())
+
+  /// When the question was answered
+  answeredAt   DateTime?
+
+  @@index([ticketId])
+  @@index([ticketId, answered])
+}
+
+/// TASK-062: Execution checkpoint for progress restoration
+/// Stores snapshots of execution state for recovery on failure
+model ExecutionCheckpoint {
+  id        String   @id @default(cuid())
+  ticketId  String
+
+  /// Type of checkpoint: auto (periodic), manual (user-triggered), stage (on stage complete)
+  type      String   @default("auto")
+
+  /// Version number for ordering checkpoints
+  version   Int      @default(0)
+
+  /// Serialized progress state including stages, logs, and context
+  data      Json
+
+  /// When the checkpoint was created
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([ticketId, createdAt])
 }
