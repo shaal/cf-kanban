@@ -17,6 +17,7 @@ export interface ProjectWithHealth {
   id: string;
   name: string;
   description: string | null;
+  workspacePath: string | null; // GAP-A1.2: Local filesystem path for "Open in Editor"
   ticketCount: number;
   completedTickets: number;
   memberCount: number;

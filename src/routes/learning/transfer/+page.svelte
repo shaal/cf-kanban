@@ -1,9 +1,11 @@
 <script lang="ts">
 	/**
 	 * TASK-084: Cross-Project Transfer Page
+	 * GAP-3.4.3: Added Cross-Project Insights Dashboard
 	 *
 	 * Page for managing cross-project pattern transfers.
 	 * Lists patterns available for transfer with project origin and creation date.
+	 * Includes insights dashboard showing transfer success rates and opt-in controls.
 	 */
 	import type { PageData, ActionData } from './$types';
 	import { enhance } from '$app/forms';
@@ -12,20 +14,61 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import TransferPreview from '$lib/components/transfer/TransferPreview.svelte';
 	import TransferHistory from '$lib/components/transfer/TransferHistory.svelte';
-	import { ArrowLeftRight, Calendar, FolderGit2, Percent, Search } from 'lucide-svelte';
+	import InsightsDashboard from '$lib/components/transfer/InsightsDashboard.svelte';
+	import { ArrowLeftRight, Calendar, FolderGit2, Percent, Search, BarChart3, List } from 'lucide-svelte';
 
-	export let data: PageData;
-	export let form: ActionData;
+	interface Props {
+		data: PageData;
+		form: ActionData;
+	}
 
-	let selectedPatternId: string | null = null;
-	let targetProjectId = '';
-	let showPreview = false;
-	let isSubmitting = false;
-	let searchQuery = '';
-	let showHistory = false;
+	let { data, form }: Props = $props();
+
+	let selectedPatternId = $state<string | null>(null);
+	let targetProjectId = $state('');
+	let showPreview = $state(false);
+	let isSubmitting = $state(false);
+	let searchQuery = $state('');
+	let showHistory = $state(false);
+	let activeTab: 'patterns' | 'insights' = $state('insights');
+	let optInStatus = $state<Record<string, boolean>>({ ...data.optInStatus });
+	let isRefreshing = $state(false);
+
+	// Handle opt-in toggle
+	async function handleOptInToggle(patternId: string, optIn: boolean) {
+		// Optimistically update the UI
+		optInStatus[patternId] = optIn;
+
+		// Submit the form
+		const formData = new FormData();
+		formData.set('patternId', patternId);
+		formData.set('optIn', String(optIn));
+
+		try {
+			const response = await fetch('?/toggleOptIn', {
+				method: 'POST',
+				body: formData
+			});
+
+			if (!response.ok) {
+				// Revert on failure
+				optInStatus[patternId] = !optIn;
+			}
+		} catch {
+			// Revert on error
+			optInStatus[patternId] = !optIn;
+		}
+	}
+
+	// Handle refresh
+	function handleRefresh() {
+		isRefreshing = true;
+		// Reload the page
+		window.location.reload();
+	}
 
 	// Filter patterns based on search
-	$: filteredPatterns = data.patterns.filter((pattern) => {
+	let filteredPatterns = $derived(data.patterns.filter((pattern) => {
 		if (!searchQuery) return true;
 		const query = searchQuery.toLowerCase();
 		return (
@@ -34,7 +77,7 @@
 			pattern.keywords.some((k) => k.toLowerCase().includes(query)) ||
 			pattern.projectName.toLowerCase().includes(query)
 		);
-	});
+	}));
 
 	function handleTransferClick(patternId: string) {
 		selectedPatternId = patternId;
@@ -74,13 +117,41 @@
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 			<div>
 				<h1 class="text-3xl font-bold text-gray-900">Pattern Transfer</h1>
-				<p class="mt-1 text-gray-600">Transfer patterns between projects</p>
+				<p class="mt-1 text-gray-600">Transfer patterns between projects and track insights</p>
 			</div>
 			<div class="flex gap-2">
 				<Button variant="outline" onclick={() => (showHistory = !showHistory)}>
 					{showHistory ? 'Hide History' : 'View History'}
 				</Button>
 			</div>
+		</div>
+
+		<!-- GAP-3.4.3: Tab Navigation for Patterns and Insights -->
+		<div class="mt-6 border-b border-gray-200">
+			<nav class="-mb-px flex gap-6" aria-label="Tabs">
+				<button
+					type="button"
+					class="flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors
+						{activeTab === 'insights'
+							? 'border-purple-500 text-purple-600'
+							: 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+					onclick={() => (activeTab = 'insights')}
+				>
+					<BarChart3 class="w-4 h-4" />
+					Cross-Project Insights
+				</button>
+				<button
+					type="button"
+					class="flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors
+						{activeTab === 'patterns'
+							? 'border-purple-500 text-purple-600'
+							: 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+					onclick={() => (activeTab = 'patterns')}
+				>
+					<List class="w-4 h-4" />
+					Available Patterns
+				</button>
+			</nav>
 		</div>
 	</header>
 
@@ -112,6 +183,20 @@
 		</div>
 	{/if}
 
+	<!-- GAP-3.4.3: Insights Dashboard Tab -->
+	{#if activeTab === 'insights'}
+		<div class="max-w-6xl mx-auto">
+			<InsightsDashboard
+				insights={data.insights}
+				originInfo={data.originInfo}
+				successMetrics={data.successMetrics}
+				patternOptInStatus={optInStatus}
+				onToggleOptIn={handleOptInToggle}
+				onRefresh={handleRefresh}
+				loading={isRefreshing}
+			/>
+		</div>
+	{:else}
 	<!-- Search and Filters -->
 	<div class="max-w-6xl mx-auto mb-6">
 		<Card class="p-4">
@@ -246,6 +331,7 @@
 			</div>
 		{/if}
 	</div>
+	{/if}
 
 	<!-- Transfer Preview Modal -->
 	{#if showPreview && selectedPatternId}

@@ -3,27 +3,48 @@
 	 * Agent Detail Panel Component
 	 * GAP-3.3.1: Visual Agent Catalog
 	 * GAP-3.3.4: Agent Success Metrics Integration
+	 * GAP-3.3.5: Custom Agent Configuration Integration
 	 *
 	 * Detailed view of a selected agent with full info.
 	 */
 	import { cn } from '$lib/utils';
 	import * as Icons from 'lucide-svelte';
-	import type { AgentCatalogEntry } from '$lib/types/agents';
+	import type { AgentCatalogEntry, CustomAgentConfig } from '$lib/types/agents';
 	import { CATEGORY_CONFIG } from '$lib/types/agents';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import AgentMetricsPanel from './AgentMetricsPanel.svelte';
 	import { getAgentMetrics } from '$lib/stores/agent-metrics';
+	import { configsByAgentType, getDefaultConfigForAgentType } from '$lib/stores/agent-configs';
 
 	interface Props {
 		agent: AgentCatalogEntry;
 		pairingSuggestions?: AgentCatalogEntry[];
 		onclose: () => void;
 		onSelectAgent?: (agent: AgentCatalogEntry) => void;
+		/** Handler for spawning an agent */
+		onspawn?: (agent: AgentCatalogEntry, config?: CustomAgentConfig) => void;
+		/** Handler for creating a new config for this agent */
+		oncreateconfig?: (agent: AgentCatalogEntry) => void;
 		class?: string;
 	}
 
-	let { agent, pairingSuggestions = [], onclose, onSelectAgent, class: className = '' }: Props = $props();
+	let { agent, pairingSuggestions = [], onclose, onSelectAgent, onspawn, oncreateconfig, class: className = '' }: Props = $props();
+
+	// Get configs for this agent type
+	const agentConfigs = $derived($configsByAgentType.get(agent.id) ?? []);
+	const defaultConfig = $derived(getDefaultConfigForAgentType(agent.id));
+
+	// Selected config for spawning
+	let selectedConfigId = $state<string | null>(null);
+	const selectedConfig = $derived(
+		selectedConfigId
+			? agentConfigs.find((c) => c.id === selectedConfigId)
+			: defaultConfig
+	);
+
+	// Spawn dropdown state
+	let showSpawnDropdown = $state(false);
 
 	// Get the icon component dynamically
 	const IconComponent = $derived((Icons as Record<string, typeof Icons.Code>)[agent.icon] || Icons.Bot);
@@ -185,12 +206,64 @@
 		{/if}
 	</div>
 
-	<!-- Footer Actions -->
-	<div class="p-4 border-t bg-gray-50">
-		<Button class="w-full" disabled>
-			<Icons.Play class="w-4 h-4 mr-2" />
-			Spawn Agent
-		</Button>
-		<p class="text-xs text-gray-400 text-center mt-2">Coming in GAP-3.3.5</p>
+	<!-- Footer Actions (GAP-3.3.5) -->
+	<div class="p-4 border-t bg-gray-50 space-y-3">
+		<!-- Config Selection -->
+		{#if agentConfigs.length > 0}
+			<div>
+				<label for="config-select" class="block text-xs font-medium text-gray-500 mb-1">
+					Configuration
+				</label>
+				<select
+					id="config-select"
+					bind:value={selectedConfigId}
+					class="w-full h-9 px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+				>
+					<option value={null}>
+						{defaultConfig ? `Default: ${defaultConfig.name}` : 'Use defaults'}
+					</option>
+					{#each agentConfigs.filter(c => !c.isDefault) as config}
+						<option value={config.id}>{config.name}</option>
+					{/each}
+				</select>
+				{#if selectedConfig}
+					<p class="text-xs text-gray-400 mt-1 truncate" title={selectedConfig.description}>
+						{selectedConfig.description || `Model: ${selectedConfig.model || 'default'}`}
+					</p>
+				{/if}
+			</div>
+		{/if}
+
+		<!-- Action Buttons -->
+		<div class="flex gap-2">
+			{#if oncreateconfig}
+				<Button
+					variant="outline"
+					class="flex-1"
+					onclick={() => oncreateconfig(agent)}
+				>
+					<Icons.Settings class="w-4 h-4 mr-2" />
+					New Config
+				</Button>
+			{/if}
+			<Button
+				class="flex-1"
+				disabled={!onspawn}
+				onclick={() => onspawn?.(agent, selectedConfig ?? undefined)}
+			>
+				<Icons.Play class="w-4 h-4 mr-2" />
+				{#if selectedConfig}
+					Spawn with Config
+				{:else}
+					Spawn Agent
+				{/if}
+			</Button>
+		</div>
+
+		{#if !onspawn}
+			<p class="text-xs text-gray-400 text-center">
+				Spawning requires an active project context
+			</p>
+		{/if}
 	</div>
 </div>

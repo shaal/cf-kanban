@@ -136,3 +136,78 @@ export interface TransferFilterOptions {
 	limit?: number;
 	offset?: number;
 }
+
+/**
+ * GAP-3.4.3: Cross-Project Insight
+ * Tracks individual pattern transfer with success metrics
+ */
+export interface CrossProjectInsight {
+	id: string;
+	patternId: string;
+	patternName: string;
+	transferId: string;
+	sourceProjectId: string;
+	sourceProjectName: string;
+	targetProjectId: string;
+	targetProjectName: string;
+	status: 'success' | 'failed' | 'rolled_back';
+	transferredAt: string;
+	patternCreatedAt: string;
+	preTransferSuccessRate: number;
+	postTransferSuccessRate: number;
+	preTransferUsageCount: number;
+	postTransferUsageCount: number;
+	improvementRate?: number;
+}
+
+/**
+ * GAP-3.4.3: Pattern Origin Information
+ * Tracks where a pattern originated
+ */
+export interface PatternOriginInfo {
+	patternId: string;
+	patternName: string;
+	originProjectId: string;
+	originProjectName: string;
+	createdAt: string;
+	transferCount: number;
+	avgSuccessRate: number;
+	transferHistory: {
+		targetProjectId: string;
+		targetProjectName: string;
+		transferredAt: string;
+		successRate: number;
+	}[];
+}
+
+/**
+ * GAP-3.4.3: Transfer Success Metrics
+ * Aggregated metrics for the insights dashboard
+ */
+export interface TransferSuccessMetrics {
+	totalTransfers: number;
+	successfulTransfers: number;
+	failedTransfers: number;
+	rolledBackTransfers: number;
+	averageSuccessRate: number;
+	averageImprovementRate: number;
+	topPerformingPatterns: {
+		patternId: string;
+		name: string;
+		sourceProject: string;
+		successRate: number;
+		transferCount: number;
+	}[];
+	recentTrend: 'improving' | 'declining' | 'stable';
+}
+
+/**
+ * GAP-3.4.3: Pattern Opt-in Settings
+ * Controls whether a pattern participates in cross-project transfers
+ */
+export interface PatternOptInSettings {
+	patternId: string;
+	optedIn: boolean;
+	updatedAt: string;
+	updatedBy?: string;
+}

@@ -332,3 +332,140 @@ export function getCategoryList(): CategoryConfig[] {
 		...config
 	}));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GAP-3.3.5: Custom Agent Configuration Types
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Custom agent configuration preset
+ * Users can create and save custom configurations for spawning agents
+ */
+export interface CustomAgentConfig {
+	/** Unique identifier for this config */
+	id: string;
+	/** Display name for the preset */
+	name: string;
+	/** Base agent type from the catalog */
+	agentTypeId: string;
+	/** Custom prompt/instructions for the agent */
+	prompt?: string;
+	/** Model override (e.g., 'claude-3-opus', 'claude-3-sonnet') */
+	model?: string;
+	/** Maximum tokens for agent responses */
+	maxTokens?: number;
+	/** Temperature setting (0-1) */
+	temperature?: number;
+	/** Custom environment variables */
+	env?: Record<string, string>;
+	/** Tags for organizing configs */
+	tags?: string[];
+	/** Description of what this config is for */
+	description?: string;
+	/** When this config was created */
+	createdAt: Date;
+	/** When this config was last updated */
+	updatedAt: Date;
+	/** Whether this is the default config for this agent type */
+	isDefault?: boolean;
+}
+
+/**
+ * Payload for creating a new custom agent config
+ */
+export interface CreateCustomAgentConfigPayload {
+	name: string;
+	agentTypeId: string;
+	prompt?: string;
+	model?: string;
+	maxTokens?: number;
+	temperature?: number;
+	env?: Record<string, string>;
+	tags?: string[];
+	description?: string;
+	isDefault?: boolean;
+}
+
+/**
+ * Payload for updating a custom agent config
+ */
+export interface UpdateCustomAgentConfigPayload {
+	name?: string;
+	prompt?: string;
+	model?: string;
+	maxTokens?: number;
+	temperature?: number;
+	env?: Record<string, string>;
+	tags?: string[];
+	description?: string;
+	isDefault?: boolean;
+}
+
+/**
+ * Project-level agent configuration settings
+ */
+export interface ProjectAgentSettings {
+	/** Custom configurations saved for this project */
+	customConfigs: CustomAgentConfig[];
+	/** Default agent type to suggest for new tickets */
+	defaultAgentType?: string;
+	/** Maximum concurrent agents for this project */
+	maxConcurrentAgents: number;
+	/** Preferred model for agents in this project */
+	preferredModel?: string;
+	/** Global environment variables for all agents */
+	globalEnv?: Record<string, string>;
+}
+
+/**
+ * Default project agent settings
+ */
+export const DEFAULT_PROJECT_AGENT_SETTINGS: ProjectAgentSettings = {
+	customConfigs: [],
+	maxConcurrentAgents: 5
+};
+
+/**
+ * Available model options for agent configuration
+ */
+export const AVAILABLE_MODELS = [
+	{ id: 'claude-3-opus', name: 'Claude 3 Opus', description: 'Most capable, best for complex tasks' },
+	{ id: 'claude-3-sonnet', name: 'Claude 3 Sonnet', description: 'Balanced performance and speed' },
+	{ id: 'claude-3-haiku', name: 'Claude 3 Haiku', description: 'Fastest, best for simple tasks' },
+	{ id: 'claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', description: 'Latest balanced model' }
+] as const;
+
+/**
+ * Validate custom agent config
+ */
+export function validateCustomAgentConfig(config: CreateCustomAgentConfigPayload): string[] {
+	const errors: string[] = [];
+
+	if (!config.name || config.name.trim().length === 0) {
+		errors.push('Name is required');
+	}
+	if (config.name && config.name.length > 100) {
+		errors.push('Name must be 100 characters or less');
+	}
+	if (!config.agentTypeId || config.agentTypeId.trim().length === 0) {
+		errors.push('Agent type is required');
+	}
+	if (config.temperature !== undefined && (config.temperature < 0 || config.temperature > 1)) {
+		errors.push('Temperature must be between 0 and 1');
+	}
+	if (config.maxTokens !== undefined && (config.maxTokens < 100 || config.maxTokens > 100000)) {
+		errors.push('Max tokens must be between 100 and 100000');
+	}
+	if (config.prompt && config.prompt.length > 10000) {
+		errors.push('Prompt must be 10000 characters or less');
+	}
+
+	return errors;
+}
+
+/**
+ * Create a unique ID for a custom config
+ */
+export function createConfigId(): string {
+	return `config-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}

@@ -210,3 +210,24 @@ export {
   getConfidenceColor,
   type TimeEstimate
 } from './time-estimates';
+
+// GAP-3.3.5: Agent configuration store for custom agent presets
+export {
+  currentProjectSettings,
+  currentProjectConfigs,
+  allConfigs,
+  configsByAgentType,
+  defaultConfigs,
+  setActiveProject,
+  createConfig,
+  updateConfig,
+  deleteConfig,
+  getConfigById,
+  getConfigsForAgentType,
+  getDefaultConfigForAgentType,
+  duplicateConfig,
+  updateProjectAgentSettings,
+  exportConfigs,
+  importConfigs,
+  initializeAgentConfigStore
+} from './agent-configs';

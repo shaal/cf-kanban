@@ -19,6 +19,7 @@ export {
 export {
 	AgentService,
 	agentService,
+	customConfigToAgentConfig,
 	type AgentType,
 	type AgentConfig,
 	type Agent,

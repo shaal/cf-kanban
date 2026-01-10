@@ -402,3 +402,29 @@ export class AgentService {
 
 // Singleton instance
 export const agentService = new AgentService();
+
+/**
+ * GAP-3.3.5: Convert CustomAgentConfig to AgentConfig
+ *
+ * Converts a custom agent configuration preset to the format
+ * expected by the AgentService for spawning.
+ */
+export function customConfigToAgentConfig(
+	customConfig: {
+		agentTypeId: string;
+		name?: string;
+		prompt?: string;
+		model?: string;
+		env?: Record<string, string>;
+	},
+	overrides?: Partial<AgentConfig>
+): AgentConfig {
+	return {
+		type: customConfig.agentTypeId,
+		name: overrides?.name ?? customConfig.name ?? `${customConfig.agentTypeId}-${Date.now()}`,
+		prompt: overrides?.prompt ?? customConfig.prompt,
+		model: overrides?.model ?? customConfig.model,
+		env: { ...customConfig.env, ...overrides?.env },
+		cwd: overrides?.cwd
+	};
+}

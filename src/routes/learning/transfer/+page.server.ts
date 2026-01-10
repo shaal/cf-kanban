@@ -1,5 +1,6 @@
 /**
  * TASK-084: Cross-Project Transfer Page - Server Load
+ * GAP-3.4.3: Added cross-project insights dashboard data
  *
  * Server-side data loading for the transfer page.
  */
@@ -16,20 +17,44 @@ export const load: PageServerLoad = async ({ url }) => {
 	const isPublic = url.searchParams.get('isPublic')
 		? url.searchParams.get('isPublic') === 'true'
 		: undefined;
+	const useMockData = url.searchParams.get('demo') === 'true';
 
-	const [patterns, history] = await Promise.all([
+	// Fetch all data in parallel
+	const [patterns, history, insights, originInfo, successMetrics, optInStatus] = await Promise.all([
 		transferService.getTransferablePatterns({
 			projectId,
 			minSuccessRate,
 			isPublic,
 			limit: 50
 		}),
-		transferService.getTransferHistory(projectId)
+		transferService.getTransferHistory(projectId),
+		transferService.getCrossProjectInsights(projectId),
+		transferService.getPatternOriginInfo(projectId),
+		transferService.getTransferSuccessMetrics(projectId),
+		transferService.getPatternOptInStatus(projectId)
 	]);
+
+	// Use mock data if no real data exists or if demo mode is enabled
+	let finalInsights = insights;
+	let finalOriginInfo = originInfo;
+	let finalSuccessMetrics = successMetrics;
+	let finalOptInStatus = optInStatus;
+
+	if (useMockData || (insights.length === 0 && history.length === 0)) {
+		const mockData = transferService.generateMockInsights();
+		finalInsights = mockData.insights;
+		finalOriginInfo = mockData.originInfo;
+		finalSuccessMetrics = mockData.successMetrics;
+		finalOptInStatus = mockData.optInStatus;
+	}
 
 	return {
 		patterns,
 		history,
+		insights: finalInsights,
+		originInfo: finalOriginInfo,
+		successMetrics: finalSuccessMetrics,
+		optInStatus: finalOptInStatus,
 		filters: {
 			projectId,
 			minSuccessRate,
@@ -138,6 +163,35 @@ export const actions: Actions = {
 		return {
 			success: true,
 			preview
+		};
+	},
+
+	/**
+	 * GAP-3.4.3: Toggle pattern opt-in status for cross-project transfers
+	 */
+	toggleOptIn: async ({ request }) => {
+		const formData = await request.formData();
+		const patternId = formData.get('patternId') as string;
+		const optIn = formData.get('optIn') === 'true';
+
+		if (!patternId) {
+			return fail(400, {
+				error: 'Pattern ID is required'
+			});
+		}
+
+		const success = await transferService.updatePatternOptIn(patternId, optIn);
+
+		if (!success) {
+			return fail(500, {
+				error: 'Failed to update opt-in status'
+			});
+		}
+
+		return {
+			success: true,
+			patternId,
+			optIn
 		};
 	}
 };

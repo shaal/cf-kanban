@@ -1,12 +1,14 @@
 <script lang="ts">
   /**
    * GAP-3.1.4: Project Stats Card Component
+   * GAP-A1.2: Added "Open in Editor" quick action
    *
    * Displays project health and statistics including:
    * - Health indicator
    * - Active agent count badge
    * - Last activity timestamp
    * - Quick stats (tickets, completion rate)
+   * - Open in Editor button (when workspace path is set)
    */
   import Card from '$lib/components/ui/Card.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
@@ -20,13 +22,16 @@
     Bot,
     TrendingUp,
     Clock,
-    ExternalLink
+    ExternalLink,
+    Code2
   } from 'lucide-svelte';
+  import { openInEditor, isValidEditorPath, getEditorName } from '$lib/utils/editor';
 
   interface ProjectStats {
     id: string;
     name: string;
     description?: string | null;
+    workspacePath?: string | null; // GAP-A1.2: Workspace path for "Open in Editor"
     ticketCount: number;
     completedTickets: number;
     memberCount: number;
@@ -55,6 +60,10 @@
     compact = false,
     class: className = ''
   }: Props = $props();
+
+  // GAP-A1.2: Check if workspace path is valid for editor opening
+  let canOpenInEditor = $derived(isValidEditorPath(project.workspacePath));
+  let editorName = $derived(getEditorName());
 
   let completionPercentage = $derived(
     project.ticketCount > 0
@@ -89,6 +98,13 @@
   function handleViewBoard() {
     if (onViewBoard) {
       onViewBoard(project.id);
+    }
+  }
+
+  // GAP-A1.2: Open project workspace in editor
+  function handleOpenInEditor() {
+    if (canOpenInEditor && project.workspacePath) {
+      openInEditor(project.workspacePath);
     }
   }
 </script>
@@ -199,7 +215,7 @@
     </div>
 
     <!-- Actions -->
-    {#if onViewDetails || onViewBoard}
+    {#if onViewDetails || onViewBoard || canOpenInEditor}
       <div class="flex items-center gap-2 pt-3 border-t border-gray-100">
         {#if onViewBoard}
           <Button
@@ -210,6 +226,17 @@
           >
             <FolderKanban class="w-4 h-4 mr-1" />
             Board
+          </Button>
+        {/if}
+        {#if canOpenInEditor}
+          <!-- GAP-A1.2: Open in Editor button -->
+          <Button
+            variant="ghost"
+            size="sm"
+            onclick={handleOpenInEditor}
+            title="Open in {editorName}"
+          >
+            <Code2 class="w-4 h-4" />
           </Button>
         {/if}
         {#if onViewDetails}

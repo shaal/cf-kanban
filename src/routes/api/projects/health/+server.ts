@@ -121,6 +121,7 @@ export const GET: RequestHandler = async ({ url }) => {
         id: project.id,
         name: project.name,
         description: project.description,
+        workspacePath: project.workspacePath, // GAP-A1.2: Include workspace path for "Open in Editor"
         ticketCount: project._count.tickets,
         completedTickets,
         memberCount: project._count.members,
