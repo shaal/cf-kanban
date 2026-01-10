@@ -5,17 +5,6 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-
-// Mock the Claude Flow CLI
-const mockExecute = vi.fn();
-
-vi.mock('$lib/server/claude-flow/cli', () => ({
-	claudeFlowCLI: {
-		execute: mockExecute
-	}
-}));
-
-// Import after mocks
 import {
 	PatternMatcher,
 	patternMatcher,
@@ -24,13 +13,29 @@ import {
 	type PatternPerformance
 } from '$lib/server/assignment/pattern-matcher';
 
+// Mock the Claude Flow CLI
+vi.mock('$lib/server/claude-flow/cli', () => ({
+	claudeFlowCLI: {
+		execute: vi.fn().mockResolvedValue({
+			stdout: '',
+			stderr: '',
+			exitCode: 0,
+			timedOut: false,
+			duration: 100
+		})
+	}
+}));
+
+// Get the mocked function for assertions
+import { claudeFlowCLI } from '$lib/server/claude-flow/cli';
+
 describe('PatternMatcher', () => {
 	let matcher: PatternMatcher;
 
 	beforeEach(() => {
 		matcher = new PatternMatcher();
 		vi.clearAllMocks();
-		mockExecute.mockResolvedValue({
+		vi.mocked(claudeFlowCLI.execute).mockResolvedValue({
 			stdout: '',
 			stderr: '',
 			exitCode: 0,
@@ -192,7 +197,7 @@ describe('PatternMatcher', () => {
 
 	describe('findMatchingPatterns', () => {
 		it('should return empty results when no patterns found', async () => {
-			mockExecute.mockResolvedValue({
+			vi.mocked(claudeFlowCLI.execute).mockResolvedValue({
 				stdout: '',
 				stderr: '',
 				exitCode: 0,
@@ -208,7 +213,7 @@ describe('PatternMatcher', () => {
 		});
 
 		it('should find matching patterns from memory', async () => {
-			mockExecute.mockResolvedValue({
+			vi.mocked(claudeFlowCLI.execute).mockResolvedValue({
 				stdout: JSON.stringify({
 					id: 'api-pattern',
 					keywords: ['api', 'rest'],
@@ -230,7 +235,7 @@ describe('PatternMatcher', () => {
 
 		it('should sort patterns by similarity', async () => {
 			// Mock search to return multiple patterns
-			mockExecute.mockImplementation(async (cmd, args) => {
+			vi.mocked(claudeFlowCLI.execute).mockImplementation(async (cmd, args) => {
 				const query = args[2]; // --query value
 				if (query.includes('api')) {
 					return {
@@ -269,7 +274,7 @@ describe('PatternMatcher', () => {
 		});
 
 		it('should respect minSimilarity threshold', async () => {
-			mockExecute.mockResolvedValue({
+			vi.mocked(claudeFlowCLI.execute).mockResolvedValue({
 				stdout: JSON.stringify({
 					id: 'low-match',
 					keywords: ['completely', 'different'],
@@ -292,7 +297,7 @@ describe('PatternMatcher', () => {
 		});
 
 		it('should respect minSuccessRate threshold', async () => {
-			mockExecute.mockResolvedValue({
+			vi.mocked(claudeFlowCLI.execute).mockResolvedValue({
 				stdout: JSON.stringify({
 					id: 'low-success',
 					keywords: ['api'],
@@ -315,7 +320,7 @@ describe('PatternMatcher', () => {
 		});
 
 		it('should limit results', async () => {
-			mockExecute.mockResolvedValue({
+			vi.mocked(claudeFlowCLI.execute).mockResolvedValue({
 				stdout: JSON.stringify(
 					Array.from({ length: 10 }, (_, i) => ({
 						id: `pattern-${i}`,
@@ -340,7 +345,7 @@ describe('PatternMatcher', () => {
 		});
 
 		it('should handle CLI errors gracefully', async () => {
-			mockExecute.mockRejectedValue(new Error('CLI unavailable'));
+			vi.mocked(claudeFlowCLI.execute).mockRejectedValue(new Error('CLI unavailable'));
 
 			const result = await matcher.findMatchingPatterns(['api'], 'feature');
 
@@ -362,7 +367,7 @@ describe('PatternMatcher', () => {
 
 			await matcher.trackPerformance(performance);
 
-			expect(mockExecute).toHaveBeenCalledWith(
+			expect(vi.mocked(claudeFlowCLI.execute)).toHaveBeenCalledWith(
 				'memory',
 				expect.arrayContaining([
 					'store',
@@ -376,7 +381,7 @@ describe('PatternMatcher', () => {
 		});
 
 		it('should handle storage failure gracefully', async () => {
-			mockExecute.mockRejectedValue(new Error('Storage failed'));
+			vi.mocked(claudeFlowCLI.execute).mockRejectedValue(new Error('Storage failed'));
 
 			const performance: PatternPerformance = {
 				patternId: 'test-pattern',
@@ -390,7 +395,7 @@ describe('PatternMatcher', () => {
 		});
 
 		it('should return true on successful storage', async () => {
-			mockExecute.mockResolvedValue({
+			vi.mocked(claudeFlowCLI.execute).mockResolvedValue({
 				stdout: '',
 				stderr: '',
 				exitCode: 0,
@@ -423,7 +428,7 @@ describe('PatternMatcher', () => {
 
 			await matcher.storePattern(pattern);
 
-			expect(mockExecute).toHaveBeenCalledWith(
+			expect(vi.mocked(claudeFlowCLI.execute)).toHaveBeenCalledWith(
 				'memory',
 				expect.arrayContaining(['store', '--key', 'new-pattern', '--namespace', 'patterns']),
 				undefined
