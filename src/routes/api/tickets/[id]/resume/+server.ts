@@ -47,8 +47,9 @@ const resumeListeners: Set<ResumeEventListener> = new Set();
 
 /**
  * Subscribe to resume events
+ * Prefixed with _ to avoid SvelteKit export validation
  */
-export function subscribeResumeEvents(listener: ResumeEventListener): () => void {
+export function _subscribeResumeEvents(listener: ResumeEventListener): () => void {
   resumeListeners.add(listener);
   return () => resumeListeners.delete(listener);
 }

@@ -38,8 +38,9 @@ const answerListeners: Set<AnswerEventListener> = new Set();
 
 /**
  * Subscribe to answer events
+ * Prefixed with _ to avoid SvelteKit export validation
  */
-export function subscribeAnswerEvents(listener: AnswerEventListener): () => void {
+export function _subscribeAnswerEvents(listener: AnswerEventListener): () => void {
   answerListeners.add(listener);
   return () => answerListeners.delete(listener);
 }

@@ -185,6 +185,49 @@ export class ClaudeFlowCLI {
 
 		try {
 			// Try to find JSON in the output (may have other text before/after)
+			// Look for the last complete JSON object/array in the output
+			// This handles CLI output that has [INFO] messages and tables before the JSON
+			const lines = result.stdout.split('\n');
+
+			// First, try to find JSON by looking for lines starting with { or [
+			let jsonStartIndex = -1;
+			let braceCount = 0;
+			let inJson = false;
+			let jsonContent = '';
+
+			for (let i = 0; i < lines.length; i++) {
+				const line = lines[i].trim();
+
+				// Look for start of JSON object or array
+				if (!inJson && (line.startsWith('{') || line.startsWith('['))) {
+					inJson = true;
+					jsonStartIndex = i;
+					braceCount = 0;
+					jsonContent = '';
+				}
+
+				if (inJson) {
+					jsonContent += lines[i] + '\n';
+					// Count braces to find complete JSON
+					for (const char of line) {
+						if (char === '{' || char === '[') braceCount++;
+						if (char === '}' || char === ']') braceCount--;
+					}
+
+					// If braces balanced, try to parse
+					if (braceCount === 0 && jsonContent.trim()) {
+						try {
+							return JSON.parse(jsonContent.trim()) as T;
+						} catch {
+							// Not valid JSON yet, keep looking
+							inJson = false;
+							jsonContent = '';
+						}
+					}
+				}
+			}
+
+			// Fallback: try original greedy regex approach
 			const jsonMatch = result.stdout.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
 			if (jsonMatch) {
 				return JSON.parse(jsonMatch[1]) as T;

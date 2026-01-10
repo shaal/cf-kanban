@@ -5,6 +5,7 @@ import { ticketStateMachine } from '$lib/state-machine/ticket-state-machine';
 import type { TicketState } from '$lib/state-machine/types';
 import { TICKET_STATES } from '$lib/state-machine/types';
 import { publishTicketMoved } from '$lib/server/events';
+import { handleTicketTransition } from '$lib/server/workflow/ticket-workflow';
 
 /**
  * GAP-3.2.4: States that can progress regardless of dependency status
@@ -115,12 +116,32 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			updatedTicket.position
 		);
 
+		// TASK-053: Trigger workflow execution for relevant transitions
+		// This spawns Claude Flow agents when moving to IN_PROGRESS, handles feedback, etc.
+		let workflowResult = null;
+		try {
+			workflowResult = await handleTicketTransition(
+				id,
+				currentState,
+				newState,
+				triggeredBy || 'user'
+			);
+
+			if (!workflowResult.success && workflowResult.error) {
+				console.warn('[Transition] Workflow warning:', workflowResult.error);
+			}
+		} catch (workflowError) {
+			// Log but don't fail the transition - workflow is enhancement, not critical path
+			console.error('[Transition] Workflow error (non-blocking):', workflowError);
+		}
+
 		return json({
 			ticket: updatedTicket,
 			transition: {
 				from: currentState,
 				to: newState
-			}
+			},
+			workflow: workflowResult
 		});
 	} catch (err) {
 		if (err && typeof err === 'object' && 'status' in err) {
