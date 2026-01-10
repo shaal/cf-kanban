@@ -10,9 +10,22 @@
  * - Connection retry strategy
  * - Memory and latency monitoring
  * - Graceful degradation
+ *
+ * SQLite Migration: Redis is now OPTIONAL
+ * - Set REDIS_ENABLED=true to enable Redis features
+ * - When disabled, all Redis functions return null or no-op implementations
+ * - Real-time sync across tabs/users requires Redis
  */
 
 import Redis from 'ioredis';
+
+/**
+ * Check if Redis is enabled via environment variable
+ * Default: disabled for simpler local development
+ */
+export function isRedisEnabled(): boolean {
+  return process.env.REDIS_ENABLED === 'true';
+}
 
 // Redis configuration from environment
 const REDIS_CONFIG = {
@@ -68,8 +81,14 @@ function createRedisClient(url: string): Redis {
 
 /**
  * Get the main Redis client instance (singleton pattern)
+ * Returns null if Redis is disabled
  */
-export function getRedisClient(): Redis {
+export function getRedisClient(): Redis | null {
+	// Check if Redis is enabled
+	if (!isRedisEnabled()) {
+		return null;
+	}
+
 	if (redisClient) {
 		return redisClient;
 	}
@@ -119,8 +138,14 @@ export function getRedisClient(): Redis {
 /**
  * Get a separate Redis client for pub/sub operations
  * Using a separate client because subscribing blocks the connection
+ * Returns null if Redis is disabled
  */
-export function getPubSubClient(): Redis {
+export function getPubSubClient(): Redis | null {
+	// Check if Redis is enabled
+	if (!isRedisEnabled()) {
+		return null;
+	}
+
 	if (pubSubClient) {
 		return pubSubClient;
 	}
@@ -133,6 +158,9 @@ export function getPubSubClient(): Redis {
 
 	// Get the main client first, then duplicate for pub/sub
 	const mainClient = getRedisClient();
+	if (!mainClient) {
+		return null;
+	}
 	pubSubClient = mainClient.duplicate();
 
 	// Set up error handling for pub/sub client
@@ -172,9 +200,11 @@ export async function closeRedisConnections(): Promise<void> {
 /**
  * TASK-112: Health check for Redis connectivity
  * Returns connection status and memory info for monitoring
+ * Returns disabled status if Redis is not enabled
  */
 export async function checkRedisHealth(): Promise<{
   healthy: boolean;
+  enabled: boolean;
   latencyMs?: number;
   memory?: {
     used: string;
@@ -184,9 +214,25 @@ export async function checkRedisHealth(): Promise<{
   clients?: number;
   error?: string;
 }> {
+  // Return disabled status if Redis is not enabled
+  if (!isRedisEnabled()) {
+    return {
+      healthy: true,
+      enabled: false,
+      error: 'Redis is disabled (REDIS_ENABLED=false). Real-time sync is not available.'
+    };
+  }
+
   const start = Date.now();
   try {
     const client = getRedisClient();
+    if (!client) {
+      return {
+        healthy: false,
+        enabled: true,
+        error: 'Redis client not available'
+      };
+    }
     const pong = await client.ping();
 
     if (pong !== 'PONG') {
@@ -210,6 +256,7 @@ export async function checkRedisHealth(): Promise<{
 
     return {
       healthy: true,
+      enabled: true,
       latencyMs: Date.now() - start,
       memory: {
         used: memoryStats.used_memory_human || 'unknown',
@@ -221,6 +268,7 @@ export async function checkRedisHealth(): Promise<{
   } catch (error) {
     return {
       healthy: false,
+      enabled: true,
       latencyMs: Date.now() - start,
       error: error instanceof Error ? error.message : 'Unknown error'
     };
@@ -229,6 +277,7 @@ export async function checkRedisHealth(): Promise<{
 
 /**
  * Get cache hit rate statistics
+ * Returns zeros if Redis is disabled
  */
 export async function getCacheStats(): Promise<{
   hits: number;
@@ -237,6 +286,9 @@ export async function getCacheStats(): Promise<{
 }> {
   try {
     const client = getRedisClient();
+    if (!client) {
+      return { hits: 0, misses: 0, hitRate: 0 };
+    }
     const info = await client.info('stats');
 
     const hitsMatch = info.match(/keyspace_hits:(\d+)/);

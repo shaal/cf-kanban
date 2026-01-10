@@ -3,7 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  // SQLite is the default for simple local development
+  // For production/multi-user, change to "postgresql" and update DATABASE_URL
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -20,7 +22,7 @@ model Project {
   templateId  String?
   template    ProjectTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
-  settings    Json            @default("{}")
+  settings    Json            @default(dbgenerated("'{}'"))
   isArchived  Boolean         @default(false)
   tickets     Ticket[]
   members     ProjectMember[]
@@ -80,7 +82,7 @@ model Ticket {
   description String?
   status      TicketStatus   @default(BACKLOG)
   priority    Priority       @default(MEDIUM)
-  labels      String[]
+  labels      Json            @default(dbgenerated("'[]'"))  // Array stored as JSON for SQLite compatibility
   complexity  Int?
   position    Int            @default(0)
 
@@ -92,7 +94,7 @@ model Ticket {
   assignedTo   User?          @relation("AssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   /// GAP-3.2.4: Ticket dependency IDs - tickets that must be completed before this one can progress
-  dependencyIds String[]
+  dependencyIds Json            @default(dbgenerated("'[]'"))  // Array stored as JSON for SQLite compatibility
 
   history     TicketHistory[]
   questions   TicketQuestion[]
@@ -195,7 +197,7 @@ model TicketQuestion {
   type         QuestionType @default(TEXT)
 
   /// Options for CHOICE/MULTISELECT types
-  options      String[]
+  options      Json             @default(dbgenerated("'[]'"))  // Array stored as JSON for SQLite compatibility
 
   /// Whether an answer is required before resuming
   required     Boolean      @default(true)
@@ -321,12 +323,12 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -411,9 +413,9 @@ enum AuditAction {
 model AuditLog {
   id          String      @id @default(cuid())
 
-  /// The user who performed the action
-  userId      String
-  user        User        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// The user who performed the action (optional to allow SetNull on delete)
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   /// Action category
   action      AuditAction
@@ -428,7 +430,7 @@ model AuditLog {
   description String
 
   /// Additional metadata (old values, new values, context)
-  metadata    Json        @default("{}")
+  metadata    Json        @default(dbgenerated("'{}'"))
 
   /// IP address of the request
   ipAddress   String?
@@ -524,8 +526,8 @@ model NotificationPreference {
   /// Event type this preference applies to
   eventType       NotificationEventType
 
-  /// Delivery channels enabled for this event type
-  channels        NotificationChannel[]
+  /// Delivery channels enabled for this event type (stored as JSON array of strings)
+  channels        Json     @default(dbgenerated("'[]'"))
 
   /// Whether this notification type is enabled at all
   enabled         Boolean  @default(true)
@@ -567,7 +569,7 @@ model Notification {
   entityId        String?
 
   /// Additional metadata (context, actor info, etc.)
-  metadata        Json     @default("{}")
+  metadata        Json     @default(dbgenerated("'{}'"))
 
   /// When the notification was created
   createdAt       DateTime @default(now())
@@ -621,8 +623,8 @@ model WebhookConfig {
   /// Secret for HMAC signature verification
   secret          String?
 
-  /// Event types this webhook should receive
-  eventTypes      NotificationEventType[]
+  /// Event types this webhook should receive (stored as JSON array of strings)
+  eventTypes      Json     @default(dbgenerated("'[]'"))
 
   /// Whether the webhook is active
   enabled         Boolean  @default(true)

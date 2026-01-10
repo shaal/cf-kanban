@@ -5,7 +5,7 @@
  */
 
 // Core Redis client functions
-export { getRedisClient, getPubSubClient, closeRedisConnections } from '$lib/server/redis';
+export { getRedisClient, getPubSubClient, closeRedisConnections, isRedisEnabled } from '$lib/server/redis';
 
 // Pub/Sub functionality
 export {

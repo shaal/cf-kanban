@@ -204,8 +204,8 @@
                       pathValidationStatus === 'valid' ? 'border-green-400' :
                       'border-blue-300'}"
               placeholder="/Users/you/code/my-project"
-              on:blur={validateWorkspacePath}
-              on:input={() => {
+              onblur={validateWorkspacePath}
+              oninput={() => {
                 // Reset validation when user starts typing again
                 if (pathValidationStatus !== 'idle') {
                   pathValidationStatus = 'idle';

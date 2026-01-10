@@ -6,7 +6,7 @@
  */
 
 import type { AgentTypeDefinition } from '$lib/types/agents';
-import { AGENT_CATALOG } from '$lib/server/agents/agent-catalog-data';
+import { AGENT_CATALOG } from '$lib/data/agent-catalog';
 
 /**
  * Command item types
