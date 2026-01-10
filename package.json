@@ -11,13 +11,21 @@
     "test": "vitest",
     "test:unit": "vitest",
     "test:e2e": "npx playwright test --project=chromium",
+    "test:e2e:all": "npx playwright test",
+    "test:e2e:firefox": "npx playwright test --project=firefox",
+    "test:e2e:webkit": "npx playwright test --project=webkit",
     "test:visual": "npx playwright test --project=visual",
     "test:a11y": "npx playwright test --project=accessibility",
     "test:perf": "npx playwright test --project=performance",
     "test:update-snapshots": "npx playwright test --project=visual --update-snapshots",
+    "test:load": "k6 run tests/load/k6-load-test.js",
+    "test:load:artillery": "npx artillery run tests/load/artillery-websocket.yml",
+    "test:security": "npm audit && npx vitest run tests/security/",
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "audit": "npm audit --audit-level=high",
+    "audit:fix": "npm audit fix"
   },
   "type": "module",
   "devDependencies": {
