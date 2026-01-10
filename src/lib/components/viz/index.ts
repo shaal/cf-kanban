@@ -18,6 +18,7 @@ export { default as AreaChart } from './AreaChart.svelte';
 
 // Force Graph
 export { default as ForceGraph } from './ForceGraph.svelte';
+export { default as AnimatedForceGraph } from './AnimatedForceGraph.svelte';
 
 // Types
 export * from './types';
